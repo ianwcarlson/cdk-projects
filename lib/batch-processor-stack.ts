@@ -64,12 +64,13 @@ export class BatchProcessorStack extends cdk.Stack {
         region,
         account,
       },
-      publicSubnet: vpc.publicSubnets[0],
       vpc,
+      publicSubnet: vpc.publicSubnets[0],
       cluster: fargateBase.cluster,
       fargateExecutionRole: fargateBase.fargateExecutionRole,
       fargateTaskRole: fargateBase.fargateTaskRole,
       noIngressSecurityGroup: fargateBase.noIngressSecurityGroup,
+      logGroup: fargateBase.logGroup,
     });
   }
 }

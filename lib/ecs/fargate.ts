@@ -1,7 +1,6 @@
-import { aws_ecs, Duration, NestedStack, Stack } from "aws-cdk-lib";
+import { aws_ecs, Duration, NestedStack, Size } from "aws-cdk-lib";
 import { Metric } from "aws-cdk-lib/aws-cloudwatch";
 import { ISubnet, IVpc, SecurityGroup } from "aws-cdk-lib/aws-ec2";
-import { Cluster, LogDrivers } from "aws-cdk-lib/aws-ecs";
 import { Role } from "aws-cdk-lib/aws-iam";
 import { ISecret, Secret } from "aws-cdk-lib/aws-secretsmanager";
 import { Construct } from "constructs";
@@ -9,6 +8,7 @@ import { FargateProps } from "../../cdk-types";
 import { INSTANCE_ID } from "../../environment-variables";
 import { validateEnvVar } from "../../utils";
 import { DOCKERHUB_SECRET_NAME } from "../../config/common-config";
+import { LogGroup } from "aws-cdk-lib/aws-logs";
 
 const instanceId = validateEnvVar(INSTANCE_ID);
 
@@ -36,7 +36,7 @@ interface FargateServiceConfigInterface {
 export class FargateStack extends NestedStack {
   private vpc: IVpc;
   private dockerHubSecret: ISecret;
-  private cluster: Cluster;
+  private cluster: aws_ecs.Cluster;
   private contextId: string;
   private fargateExecutionRole: Role;
   private fargateTaskRole: Role;
@@ -44,6 +44,7 @@ export class FargateStack extends NestedStack {
   private publicSubnet: ISubnet;
   private dockerhubSecret: ISecret;
   public region: string;
+  private logGroup: LogGroup;
 
   constructor(scope: Construct, id: string, props: FargateProps) {
     super(scope, id, props);
@@ -55,6 +56,7 @@ export class FargateStack extends NestedStack {
       fargateExecutionRole,
       fargateTaskRole,
       noIngressSecurityGroup,
+      logGroup,
       env: { region },
     } = props;
 
@@ -65,6 +67,7 @@ export class FargateStack extends NestedStack {
     this.noIngressSecurityGroup = noIngressSecurityGroup;
     this.publicSubnet = publicSubnet;
     this.region = region;
+    this.logGroup = logGroup;
 
     this.dockerhubSecret = Secret.fromSecretNameV2(
       scope,
@@ -95,7 +98,6 @@ export class FargateStack extends NestedStack {
     this.instantiateFargateService({ params: Orchestrator });
   }
 
-
   private instantiateFargateService = ({
     params,
   }: {
@@ -108,7 +110,7 @@ export class FargateStack extends NestedStack {
     //   taskRole: this.fargateTaskRole,
     //   family: params.ServicePrefixId,
     // }));
-  
+
     const taskDefinition = new aws_ecs.FargateTaskDefinition(
       this,
       `task-${params.ServicePrefixId}`,
@@ -182,7 +184,10 @@ export class FargateStack extends NestedStack {
 
         ...params.environment,
       },
-      logging: LogDrivers.awsLogs,
+      logging: aws_ecs.LogDriver.awsLogs({
+        streamPrefix: "batch-processor",
+        logGroup: this.logGroup,
+      }),
     };
   };
 }

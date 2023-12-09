@@ -1,5 +1,5 @@
 import { aws_ssm, NestedStack, RemovalPolicy, Stack } from "aws-cdk-lib";
-import { IVpc, SecurityGroup, Vpc } from "aws-cdk-lib/aws-ec2";
+import { IVpc, SecurityGroup } from "aws-cdk-lib/aws-ec2";
 import { Cluster } from "aws-cdk-lib/aws-ecs";
 import {
   Effect,
@@ -36,7 +36,7 @@ export class FargateBaseStack extends NestedStack {
   ) {
     super(scope, id, props);
 
-    const { vpc, publicSubnet } = props;
+    const { vpc } = props;
 
     this.cluster = new Cluster(this, `fargate-cluster-${instanceId}`, {
       vpc,

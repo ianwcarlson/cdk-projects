@@ -25,4 +25,5 @@ export interface FargateProps extends StackPropsWithBuildConfigAndNetworking {
   fargateExecutionRole: Role;
   fargateTaskRole: Role;
   noIngressSecurityGroup: SecurityGroup;
+  logGroup: LogGroup;
 }
