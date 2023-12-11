@@ -8,10 +8,29 @@ import {
   ECS_SUBNET_ARN,
   ECS_TASK_DEF_ARN,
 } from "../environment-variables";
-import { ECS_TASK_STATE_RUNNING, deleteQueue, findEcsClusterArn, getTaskState, runTask, stopTask } from "../lib/sdk-drivers/ecs/ecs-io";
-import { createQueue } from "../lib/sdk-drivers/sqs/sqs-io";
-import { importRegionEnvVar, sleep, validateEnvVar } from "../utils";
+import {
+  ECS_TASK_STATE_RUNNING,
+  deleteQueue,
+  findEcsClusterArn,
+  getTaskState,
+  runTask,
+  stopTask,
+} from "../lib/sdk-drivers/ecs/ecs-io";
+import {
+  createQueue,
+  receiveMessage,
+  sendMessageBatch,
+} from "../lib/sdk-drivers/sqs/sqs-io";
+import {
+  groupArray,
+  importRegionEnvVar,
+  sleep,
+  validateEnvVar,
+} from "../utils";
 import { RunTaskCommandOutput } from "@aws-sdk/client-ecs";
+import { sqsClient } from "../lib/sdk-drivers/sqs/sqs-client";
+import { Message } from "@aws-sdk/client-sqs";
+import { JobType } from "./job-types";
 
 const region = importRegionEnvVar();
 const clusterArn = validateEnvVar(ECS_CLUSTER_ARN);
@@ -22,13 +41,14 @@ const taskDefinitionArn = validateEnvVar(ECS_TASK_DEF_ARN);
 const batchParallelism = validateEnvVar(BATCH_PARALLELISM);
 
 const MAX_RETRY_COUNT = 1000;
+const MAX_READ_STALL_COUNT = 1000;
 
 interface QueueTaskArns {
-  queueUrls: string[],
-  taskArns: string[]
+  queueUrls: string[];
+  taskArns: string[];
 }
 
-async function orchestrator() { 
+async function orchestrator() {
   let queueTaskArns: QueueTaskArns | undefined;
   try {
     queueTaskArns = await conductBatchRun();
@@ -79,25 +99,30 @@ async function conductBatchRun() {
   do {
     const getTaskStatePromises = Array.from(Array(batchParallelism)).map(() => {
       return getTaskState({ clusterArn, taskArn: taskDefinitionArn });
-    })
+    });
     const taskStates = await Promise.all(getTaskStatePromises);
-    areAllTasksRunning = taskStates.every(ts => ts.tasks && ts.tasks[0].lastStatus === ECS_TASK_STATE_RUNNING)
-    retryCount -= 1; 
+    areAllTasksRunning = taskStates.every(
+      (ts) => ts.tasks && ts.tasks[0].lastStatus === ECS_TASK_STATE_RUNNING,
+    );
+    retryCount -= 1;
     await sleep(500);
-  } while (retryCount < MAX_RETRY_COUNT && !areAllTasksRunning)
+  } while (retryCount < MAX_RETRY_COUNT && !areAllTasksRunning);
 
   if (retryCount === 0) {
     const errorMessage = `Unable to start ${batchParallelism} tasks in RUNNING state`;
-    console.log(errorMessage)
-    throw new Error(errorMessage)
+    console.log(errorMessage);
+    throw new Error(errorMessage);
   }
 
-  const taskArns = startedTasks.reduce((acc: string[], t: RunTaskCommandOutput) => {
-    if (t.tasks && t.tasks.length > 0 && t.tasks[0].taskArn) {
-      acc.push(t.tasks[0].taskArn);
-    }
-    return acc;
-  }, []);
+  const taskArns = startedTasks.reduce(
+    (acc: string[], t: RunTaskCommandOutput) => {
+      if (t.tasks && t.tasks.length > 0 && t.tasks[0].taskArn) {
+        acc.push(t.tasks[0].taskArn);
+      }
+      return acc;
+    },
+    [],
+  );
 
   const queueUrls = createQueueResponses.reduce((acc: string[], r) => {
     if (r.QueueUrl) {
@@ -109,13 +134,118 @@ async function conductBatchRun() {
   return { queueUrls, taskArns };
 }
 
-async function cleanUp({ queueUrls , taskArns }: QueueTaskArns) {
+async function cleanUp({ queueUrls, taskArns }: QueueTaskArns) {
   for (const taskArn of taskArns) {
-    await stopTask({ region, taskArn, reason: "Cleaning up batch-processing tasks", clusterArn });
+    await stopTask({
+      region,
+      taskArn,
+      reason: "Cleaning up batch-processing tasks",
+      clusterArn,
+    });
   }
   for (const queueUrl of queueUrls) {
     await deleteQueue(queueUrl);
   }
+}
+
+interface WriteBatchesInput {
+  inputData: Array<string | number>;
+  workerQueueUrl: string;
+  workerStatusQueueUrl: string;
+  jobProperties: object;
+}
+
+async function writeBatches({
+  inputData,
+  workerQueueUrl,
+  workerStatusQueueUrl,
+  jobProperties,
+}: WriteBatchesInput) {
+  const currentTime = new Date();
+  let writeBatchIdx = 0;
+  let readBatchIdx = 0;
+  const readStallCounter = MAX_READ_STALL_COUNT;
+  const workerPool = new Map();
+  const batchParallelism = 6;
+  const groupedInputData = groupArray(inputData, 10);
+  const numBatches = groupedInputData.length;
+
+  while (readBatchIdx < numBatches && readStallCounter > 0) {
+    if (workerPool.size < batchParallelism && writeBatchIdx < numBatches) {
+      const numBatchesRemaining = numBatches - writeBatchIdx;
+      const numBatchesToAdd = batchParallelism - workerPool.size;
+      const numBatchesToAddActual = Math.min(
+        numBatchesToAdd,
+        numBatchesRemaining,
+      );
+
+      const batchIndices = [];
+      for (let i = 0; i < numBatchesToAddActual; i++) {
+        const taskIds = groupedInputData[i];
+        batchIndices.push(writeBatchIdx);
+        workerPool.set(writeBatchIdx, { currentTime, taskIds, retries: 0 });
+        writeBatchIdx += 1;
+      }
+
+      const writeBatchPromises = batchIndices.map((batchIndex) => {
+        return writeToWorkerQueue({
+          queueUrl: workerQueueUrl,
+          batchIndex,
+          data: groupedInputData[batchIndex],
+          jobProperties,
+        });
+      });
+      await Promise.all(writeBatchPromises);
+
+      const messages = await readFromWorkerStatusQueue({
+        queueUrl: workerStatusQueueUrl,
+      });
+    }
+  }
+}
+
+interface WriteToWorkerQueueInput {
+  queueUrl: string;
+  batchIndex: number;
+  data: Array<string | number>;
+  jobProperties: object; // refine further
+}
+async function writeToWorkerQueue({
+  queueUrl,
+  batchIndex,
+  data,
+  jobProperties,
+}: WriteToWorkerQueueInput) {
+  sendMessageBatch({
+    queueUrl,
+    messages: data.map((d) => ({
+      id: nanoid(),
+      messageBody: JSON.stringify({ batchIndex, data, jobProperties }),
+    })),
+  });
+}
+
+interface ReadFromWorkerStatusQueueInput {
+  queueUrl: string;
+}
+
+interface WorkerStatusMessage {
+  batchIndex: number;
+}
+async function readFromWorkerStatusQueue({
+  queueUrl,
+}: ReadFromWorkerStatusQueueInput) {
+  let message;
+  let messages: Message[] = [];
+
+  do {
+    message = await receiveMessage({ queueUrl });
+    if (message && message.Messages) {
+      messages = messages.concat(message.Messages);
+    }
+  } while (message);
+
+  return messages;
 }
 
 orchestrator().then();

@@ -201,10 +201,7 @@ interface GetTaskStateInput {
   taskArn: string;
 }
 
-export async function getTaskState({
-  clusterArn,
-  taskArn,
-}: GetTaskStateInput) {
+export async function getTaskState({ clusterArn, taskArn }: GetTaskStateInput) {
   const response = await describeTasks({
     region,
     // findEcsClusterArn should throw exception if cluster not found
@@ -227,7 +224,7 @@ interface WaitForTaskToCompleteInput {
   clusterArn: string;
   clusterName: string;
   instanceId: string;
-  desiredState: typeof ECS_TASK_STATE_RUNNING | typeof ECS_TASK_STATE_STOPPED
+  desiredState: typeof ECS_TASK_STATE_RUNNING | typeof ECS_TASK_STATE_STOPPED;
 }
 
 async function waitForTaskState({
@@ -243,7 +240,7 @@ async function waitForTaskState({
   while (retryCount > 0) {
     retryCount -= 1;
 
-    const response = await getTaskState({ clusterArn, taskArn })
+    const response = await getTaskState({ clusterArn, taskArn });
 
     if (response.tasks && retryCount % 12 === 0) {
       console.log(
@@ -254,10 +251,7 @@ async function waitForTaskState({
       );
     }
 
-    if (
-      response.tasks &&
-      response.tasks[0].lastStatus === desiredState
-    ) {
+    if (response.tasks && response.tasks[0].lastStatus === desiredState) {
       console.log(
         `Task ARN ${taskArn} in ${instanceId} is ${desiredState}. Proceeding...\nLast status ${response.tasks[0].lastStatus}`,
       );
@@ -291,8 +285,8 @@ export async function findEcsClusterArn(clusterName: string) {
 }
 
 export async function deleteQueue(queueUrl: string) {
-  const input = { 
-    QueueUrl: queueUrl
+  const input = {
+    QueueUrl: queueUrl,
   };
   const command = new DeleteQueueCommand(input);
   const response = await sqsClient.send(command);

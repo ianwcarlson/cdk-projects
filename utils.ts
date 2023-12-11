@@ -54,3 +54,18 @@ export function buildEcsClusterArnSSMKey(instanceId: string) {
 export function buildSecurityGroupArnSSMKey(instanceId: string) {
   return `security-group-arn-ssm-key-${instanceId}`;
 }
+
+export function groupArray<T>(input: T[], groupSize: number) {
+  const groups: T[][] = [[]];
+  let groupCounter = 0;
+
+  for (let i = 0; i < input.length; i += 1) {
+    groups[groupCounter].push(input[i]);
+
+    if (i % groupSize === groupSize - 1 && i < input.length - 1) {
+      groupCounter += 1;
+      groups.push([]);
+    }
+  }
+  return groups;
+}
