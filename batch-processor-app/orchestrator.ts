@@ -200,6 +200,7 @@ async function writeBatches({
       const messages = await readFromWorkerStatusQueue({
         queueUrl: workerStatusQueueUrl,
       });
+
     }
   }
 }
@@ -210,17 +211,23 @@ interface WriteToWorkerQueueInput {
   data: Array<string | number>;
   jobProperties: object; // refine further
 }
+interface JobMessageBody {
+  batchIndex: number;
+  data: Array<string | number>;
+  jobProperties: object;
+}
 async function writeToWorkerQueue({
   queueUrl,
   batchIndex,
   data,
   jobProperties,
 }: WriteToWorkerQueueInput) {
+  const messageBody: JobMessageBody = { batchIndex, data, jobProperties };
   sendMessageBatch({
     queueUrl,
-    messages: data.map((d) => ({
+    messages: data.map(() => ({
       id: nanoid(),
-      messageBody: JSON.stringify({ batchIndex, data, jobProperties }),
+      messageBody: JSON.stringify(messageBody),
     })),
   });
 }
@@ -245,7 +252,15 @@ async function readFromWorkerStatusQueue({
     }
   } while (message);
 
-  return messages;
+  const messageBodies = messages.reduce((acc: JobMessageBody[], m: Message) => {
+    if (m.Body) {
+      const deserializedBody: JobMessageBody = JSON.parse(m.Body);
+      acc.push(deserializedBody)
+    }
+    return acc;
+  }, [])
+
+  return messageBodies;
 }
 
 orchestrator().then();
