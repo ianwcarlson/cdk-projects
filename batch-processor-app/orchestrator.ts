@@ -53,7 +53,9 @@ interface QueueTaskArns {
 
 interface OrchestratorInput {
   handleGenerateInputData: { (): Promise<Array<string | number>> };
-  handleJobStatusResponse?: { (response: JobStatusMessageBody[]): Promise<void> };
+  handleJobStatusResponse?: {
+    (response: JobStatusMessageBody[]): Promise<void>;
+  };
 }
 
 export async function orchestrator({
@@ -225,7 +227,9 @@ interface WriteBatchesInput {
   workerQueueUrl: string;
   workerStatusQueueUrl: string;
   jobProperties: object;
-  handleJobStatusResponse?: { (response: JobStatusMessageBody[]) : Promise<void> };
+  handleJobStatusResponse?: {
+    (response: JobStatusMessageBody[]): Promise<void>;
+  };
 }
 
 async function writeBatches({

@@ -1,21 +1,31 @@
+import { nanoid } from "nanoid";
 import { JOB_QUEUE_URL, JOB_STATUS_QUEUE_URL } from "../environment-variables";
-import { receiveMessage } from "../lib/sdk-drivers/sqs/sqs-io";
+import {
+  receiveMessage,
+  sendMessageBatch,
+} from "../lib/sdk-drivers/sqs/sqs-io";
 import { validateEnvVar } from "../utils";
-import { JobMessageBody } from "./job-types";
+import { JobMessageBody, JobStatusMessageBody } from "./job-types";
 
 const MAX_IDLE_COUNT = 1000;
 
 const jobQueueUrl = validateEnvVar(JOB_QUEUE_URL);
 const jobStatusQueueUrl = validateEnvVar(JOB_STATUS_QUEUE_URL);
 
-async function main() {
+interface WorkerProcessInput {
+  handleProcessMessage: (
+    message: JobMessageBody,
+  ) => Promise<JobStatusMessageBody>;
+}
+
+export async function workerProcessInput({
+  handleProcessMessage,
+}: WorkerProcessInput) {
   console.log("Worker starting");
 
   let timeOutCount = MAX_IDLE_COUNT;
 
   while (timeOutCount > 0) {
-    // poll job status queue
-    // if job is available, process it
     const message = await receiveMessage({
       queueUrl: jobQueueUrl,
       maxNumberOfMessages: 1,
@@ -27,6 +37,13 @@ async function main() {
       const payload: JobMessageBody = JSON.parse(
         message.Messages[0].Body || "",
       );
+      const jobStatusMessage = await handleProcessMessage(payload);
+      await sendMessageBatch({
+        queueUrl: jobStatusQueueUrl,
+        messages: [
+          { messageBody: JSON.stringify(jobStatusMessage), id: nanoid() },
+        ],
+      });
     } else {
       timeOutCount -= 1;
     }
@@ -38,5 +55,3 @@ async function main() {
 
   console.log("Worker stopping");
 }
-
-main().then();
