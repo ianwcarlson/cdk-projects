@@ -69,3 +69,28 @@ export function groupArray<T>(input: T[], groupSize: number) {
   }
   return groups;
 }
+
+export function didAnySettledPromisesFail<T>(
+  results: PromiseSettledResult<T>[],
+) {
+  const failedResults = results.filter((result, idx, results) => {
+    return result.status === "rejected";
+  });
+  return failedResults.length > 0;
+}
+
+export function getFulfilledValuesFromSettledPromises<T>(
+  results: PromiseSettledResult<T>[],
+) {
+  return results.map((result) => {
+    return result.status === "fulfilled" ? result.value : null;
+  });
+}
+
+export function getFailedValuesFromSettledPromises<T>(
+  results: PromiseSettledResult<T>[],
+) {
+  return results.map((result, idx) => {
+    return result.status === "rejected" ? idx : null;
+  });
+}
