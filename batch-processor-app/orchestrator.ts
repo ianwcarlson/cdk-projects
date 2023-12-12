@@ -7,6 +7,8 @@ import {
   ECS_SECURITY_GROUP_ARN,
   ECS_SUBNET_ARN,
   ECS_TASK_DEF_ARN,
+  JOB_QUEUE_URL,
+  JOB_STATUS_QUEUE_URL,
 } from "../environment-variables";
 import {
   ECS_TASK_STATE_RUNNING,
@@ -30,6 +32,7 @@ import {
 } from "../utils";
 import { RunTaskCommandOutput } from "@aws-sdk/client-ecs";
 import { CreateQueueCommandOutput, Message } from "@aws-sdk/client-sqs";
+import { JobMessageBody, JobStatus, JobStatusMessageBody } from "./job-types";
 
 const region = importRegionEnvVar();
 const clusterArn = validateEnvVar(ECS_CLUSTER_ARN);
@@ -41,28 +44,40 @@ const batchParallelism = parseInt(validateEnvVar(BATCH_PARALLELISM));
 
 const MAX_RETRY_COUNT = 1000;
 const MAX_READ_STALL_COUNT = 1000;
+const MAX_WORKER_RETRY_COUNT = 2;
 
 interface QueueTaskArns {
   queueUrls: string[];
   taskArns: string[];
 }
 
-async function orchestrator() {
+interface OrchestratorInput {
+  handleGenerateInputData: { (): Promise<Array<string | number>> };
+  handleJobStatusResponse?: { (response: JobStatusMessageBody[]): Promise<void> };
+}
+
+export async function orchestrator({
+  handleGenerateInputData,
+  handleJobStatusResponse,
+}: OrchestratorInput) {
   let queueUrls: string[] | undefined = [];
   let taskArns: string[] | undefined = [];
+
+  const inputData = await handleGenerateInputData();
   try {
     const responses = await setupPipeline();
     queueUrls = responses.queueUrls;
     taskArns = responses.taskArns;
 
     await writeBatches({
-      inputData: Array.from(Array(1000).keys()),
+      inputData,
       workerQueueUrl: queueUrls[0],
       workerStatusQueueUrl: queueUrls[1],
       jobProperties: {},
+      handleJobStatusResponse,
     });
   } catch (e) {
-    console.error("Encountere exception: ", e);
+    console.error("Encountered exception: ", e);
   } finally {
     await cleanUp({ queueUrls, taskArns });
   }
@@ -131,6 +146,9 @@ async function createQueues({
     if (didAnySettledPromisesFail(createQueueResponses)) {
       throw new Error("Unable to create queues");
     }
+
+    console.log("Queues created");
+
     const createQueueValues =
       getFulfilledValuesFromSettledPromises(createQueueResponses);
     return createQueueValues;
@@ -143,6 +161,9 @@ async function createQueues({
 async function waitForTasksRunning() {
   let retryCount = MAX_RETRY_COUNT;
   let areAllTasksRunning = false;
+
+  console.log("Waiting for tasks to start running");
+
   do {
     const getTaskStatePromises = Array.from(Array(batchParallelism)).map(() => {
       return getTaskState({ clusterArn, taskArn: taskDefinitionArn });
@@ -151,8 +172,16 @@ async function waitForTasksRunning() {
     areAllTasksRunning = taskStates.every(
       (ts) => ts.tasks && ts.tasks[0].lastStatus === ECS_TASK_STATE_RUNNING,
     );
-    retryCount -= 1;
+
     await sleep(500);
+
+    if (retryCount % 10 === 0) {
+      console.log(
+        `Waiting for tasks to start running. ${retryCount} retries remaining`,
+      );
+    }
+
+    retryCount -= 1;
   } while (retryCount < MAX_RETRY_COUNT && !areAllTasksRunning);
 
   if (retryCount === 0) {
@@ -160,26 +189,35 @@ async function waitForTasksRunning() {
     console.log(errorMessage);
     throw new Error(errorMessage);
   }
+
+  console.log(`${batchParallelism} tasks running`);
 }
 
 async function extractTaskArns(startedTasks: RunTaskCommandOutput[]) {
-  return startedTasks.reduce((acc: string[], t: RunTaskCommandOutput) => {
-    if (t.tasks && t.tasks.length > 0 && t.tasks[0].taskArn) {
-      acc.push(t.tasks[0].taskArn);
-    }
-    return acc;
-  }, []);
+  const taskArns = startedTasks.reduce(
+    (acc: string[], t: RunTaskCommandOutput) => {
+      if (t.tasks && t.tasks.length > 0 && t.tasks[0].taskArn) {
+        acc.push(t.tasks[0].taskArn);
+      }
+      return acc;
+    },
+    [],
+  );
+  console.log("Task ARNs: ", taskArns);
+  return taskArns;
 }
 
 async function extractQueueUrls(
   createQueueValues: (CreateQueueCommandOutput | null)[],
 ) {
-  return createQueueValues.reduce((acc: string[], r) => {
+  const queueUrls = createQueueValues.reduce((acc: string[], r) => {
     if (r && r.QueueUrl) {
       acc.push(r.QueueUrl);
     }
     return acc;
   }, []);
+  console.log("Queue URLs: ", queueUrls);
+  return queueUrls;
 }
 
 interface WriteBatchesInput {
@@ -187,6 +225,7 @@ interface WriteBatchesInput {
   workerQueueUrl: string;
   workerStatusQueueUrl: string;
   jobProperties: object;
+  handleJobStatusResponse?: { (response: JobStatusMessageBody[]) : Promise<void> };
 }
 
 async function writeBatches({
@@ -194,12 +233,16 @@ async function writeBatches({
   workerQueueUrl,
   workerStatusQueueUrl,
   jobProperties,
+  handleJobStatusResponse,
 }: WriteBatchesInput) {
   const currentTime = new Date();
   let writeBatchIdx = 0;
   let readBatchIdx = 0;
   const readStallCounter = MAX_READ_STALL_COUNT;
-  const workerPool = new Map();
+  const workerPool: Map<
+    number,
+    { currentTime: Date; taskIds: (string | number)[]; retries: number }
+  > = new Map();
   const batchParallelism = 6;
   const groupedInputData = groupArray(inputData, 10);
   const numBatches = groupedInputData.length;
@@ -229,15 +272,39 @@ async function writeBatches({
           jobProperties,
         });
       });
-      const responses = await Promise.allSettled(writeBatchPromises);
-      const failed = responses.filter((response, idx, promiseSettledResult) => {
-        console.log({ promiseSettledResult });
-        return response.status === "rejected";
-      });
+      await Promise.allSettled(writeBatchPromises);
+      // const failed = responses.filter((response, idx, promiseSettledResult) => {
+      //   console.log({ promiseSettledResult });
+      //   return response.status === "rejected";
+      // });
 
       const messages = await readFromWorkerStatusQueue({
         queueUrl: workerStatusQueueUrl,
       });
+
+      for (const message of messages) {
+        const { batchIndex, status } = message;
+        const worker = workerPool.get(batchIndex);
+        if (worker) {
+          workerPool.delete(batchIndex);
+          if (status === JobStatus.FAILURE) {
+            if (worker.retries < MAX_WORKER_RETRY_COUNT) {
+              worker.retries += 1;
+              workerPool.set(batchIndex, worker);
+            } else {
+              console.log(
+                `Batch ${batchIndex} failed after ${worker.retries} retries`,
+              );
+            }
+          }
+        } else {
+          console.error("Unable to find worker for batch index: ", batchIndex);
+          console.error("Worker pool: ", workerPool);
+        }
+      }
+      if (handleJobStatusResponse) {
+        await handleJobStatusResponse(messages);
+      }
     }
   }
 }
@@ -248,11 +315,7 @@ interface WriteToWorkerQueueInput {
   data: Array<string | number>;
   jobProperties: object; // refine further
 }
-interface JobMessageBody {
-  batchIndex: number;
-  data: Array<string | number>;
-  jobProperties: object;
-}
+
 async function writeToWorkerQueue({
   queueUrl,
   batchIndex,
@@ -286,13 +349,16 @@ async function readFromWorkerStatusQueue({
     }
   } while (message);
 
-  const messageBodies = messages.reduce((acc: JobMessageBody[], m: Message) => {
-    if (m.Body) {
-      const deserializedBody: JobMessageBody = JSON.parse(m.Body);
-      acc.push(deserializedBody);
-    }
-    return acc;
-  }, []);
+  const messageBodies = messages.reduce(
+    (acc: JobStatusMessageBody[], m: Message) => {
+      if (m.Body) {
+        const deserializedBody: JobStatusMessageBody = JSON.parse(m.Body);
+        acc.push(deserializedBody);
+      }
+      return acc;
+    },
+    [],
+  );
 
   return messageBodies;
 }
@@ -324,8 +390,8 @@ async function startWorkerTasks({
         taskDefinitionArn,
         containerName: `batch-worker-${uniqueId}-${startedTasks.length}`,
         environment: {
-          JOB_QUEUE_URL: jobQueueUrl,
-          JOB_STATUS_QUEUE_URL: jobStatusQueueUrl,
+          [JOB_QUEUE_URL]: jobQueueUrl,
+          [JOB_STATUS_QUEUE_URL]: jobStatusQueueUrl,
         },
       });
       startedTasks.push(task);
@@ -342,5 +408,3 @@ async function startWorkerTasks({
   );
   return startedTasks;
 }
-
-orchestrator().then();

@@ -15,3 +15,7 @@ export const ECS_SUBNET_ARN = "ECS_SUBNET_ARN";
 export const ECS_TASK_DEF_ARN = "ECS_TASK_DEF_ARN";
 
 export const BATCH_PARALLELISM = "BATCH_PARALLELISM";
+
+export const JOB_QUEUE_URL = "JOB_QUEUE_URL";
+
+export const JOB_STATUS_QUEUE_URL = "JOB_STATUS_QUEUE_URL";
