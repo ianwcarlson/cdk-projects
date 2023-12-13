@@ -6,9 +6,9 @@ import {
   ECS_GROUP,
   ECS_SECURITY_GROUP_ARN,
   ECS_SUBNET_ARN,
-  ECS_TASK_DEF_ARN,
   JOB_QUEUE_URL,
   JOB_STATUS_QUEUE_URL,
+  WORKER_TASK_DEF_ARN,
 } from "../environment-variables";
 import {
   ECS_TASK_STATE_RUNNING,
@@ -39,7 +39,7 @@ const clusterArn = validateEnvVar(ECS_CLUSTER_ARN);
 const group = validateEnvVar(ECS_GROUP);
 const securityGroupArn = validateEnvVar(ECS_SECURITY_GROUP_ARN);
 const subnetArn = validateEnvVar(ECS_SUBNET_ARN);
-const taskDefinitionArn = validateEnvVar(ECS_TASK_DEF_ARN);
+const workerTaskDefinitionArn = validateEnvVar(WORKER_TASK_DEF_ARN);
 const batchParallelism = parseInt(validateEnvVar(BATCH_PARALLELISM));
 
 const MAX_RETRY_COUNT = 1000;
@@ -56,18 +56,20 @@ interface OrchestratorInput {
   handleJobStatusResponse?: {
     (response: JobStatusMessageBody[]): Promise<void>;
   };
+  workerRunCommand: string[];
 }
 
 export async function orchestrator({
   handleGenerateInputData,
   handleJobStatusResponse,
+  workerRunCommand,
 }: OrchestratorInput) {
   let queueUrls: string[] | undefined = [];
   let taskArns: string[] | undefined = [];
 
   const inputData = await handleGenerateInputData();
   try {
-    const responses = await setupPipeline();
+    const responses = await setupPipeline(workerRunCommand);
     queueUrls = responses.queueUrls;
     taskArns = responses.taskArns;
 
@@ -85,12 +87,12 @@ export async function orchestrator({
   }
 }
 
-async function setupPipeline() {
+async function setupPipeline(workerRunCommand: string[]) {
   console.log("orchestrator starting");
 
   const uniqueId = nanoid();
-  const jobQueueName = `job-queue-${nanoid}`;
-  const jobStatusQueueName = `job-status-queue-${nanoid}`;
+  const jobQueueName = `job-queue-${uniqueId}`;
+  const jobStatusQueueName = `job-status-queue-${uniqueId}`;
 
   console.log("Creating job queue and response state queues");
 
@@ -108,6 +110,7 @@ async function setupPipeline() {
     uniqueId,
     jobQueueUrl: queueUrls[0],
     jobStatusQueueUrl: queueUrls[1],
+    workerRunCommand,
   });
 
   const taskArns = await extractTaskArns(startedTasks);
@@ -168,7 +171,7 @@ async function waitForTasksRunning() {
 
   do {
     const getTaskStatePromises = Array.from(Array(batchParallelism)).map(() => {
-      return getTaskState({ clusterArn, taskArn: taskDefinitionArn });
+      return getTaskState({ clusterArn, taskArn: workerTaskDefinitionArn });
     });
     const taskStates = await Promise.all(getTaskStatePromises);
     areAllTasksRunning = taskStates.every(
@@ -371,11 +374,13 @@ interface StartWorkerTasksInput {
   uniqueId: string;
   jobQueueUrl: string;
   jobStatusQueueUrl: string;
+  workerRunCommand: string[];
 }
 async function startWorkerTasks({
   uniqueId,
   jobQueueUrl,
   jobStatusQueueUrl,
+  workerRunCommand,
 }: StartWorkerTasksInput) {
   const startedTasks: RunTaskCommandOutput[] = [];
   let failCount = 0;
@@ -391,12 +396,13 @@ async function startWorkerTasks({
         group,
         securityGroupArns: [securityGroupArn],
         subnetArns: [subnetArn],
-        taskDefinitionArn,
+        taskDefinitionArn: workerTaskDefinitionArn,
         containerName: `batch-worker-${uniqueId}-${startedTasks.length}`,
         environment: {
           [JOB_QUEUE_URL]: jobQueueUrl,
           [JOB_STATUS_QUEUE_URL]: jobStatusQueueUrl,
         },
+        command: workerRunCommand,
       });
       startedTasks.push(task);
     } catch (e) {

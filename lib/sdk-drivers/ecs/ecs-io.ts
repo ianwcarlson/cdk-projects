@@ -10,7 +10,6 @@ import {
   DescribeClustersCommand,
   StopTaskCommand,
 } from "@aws-sdk/client-ecs";
-import { Cluster } from "aws-cdk-lib/aws-ecs";
 import { importRegionEnvVar, sleep } from "../../../utils";
 import { DeleteQueueCommand } from "@aws-sdk/client-sqs";
 import { sqsClient } from "../sqs/sqs-client";

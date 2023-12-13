@@ -5,7 +5,7 @@
     "cdk-top": "bin/cdk-top.ts"
   },
   "scripts": {
-    "build": "esbuild ./batch-processor-app/orchestrator.ts ./batch-processor-app/worker.ts --sourcemap --outdir=./docker-build/batch-processor-app",
+    "build": "esbuild ./batch-processor-app/orchestrator-example.ts ./batch-processor-app/worker-example.ts --sourcemap --outdir=./docker-build/batch-processor-app/dist",
     "watch": "tsc -w",
     "test": "jest",
     "cdk": "cdk",
