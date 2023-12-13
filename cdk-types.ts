@@ -27,3 +27,15 @@ export interface FargateProps extends StackPropsWithBuildConfigAndNetworking {
   noIngressSecurityGroup: SecurityGroup;
   logGroup: LogGroup;
 }
+
+export interface BatchProcessorLambdaTopProps extends NestedStackProps {
+  env: {
+    region: string;
+    account: string;
+  };
+  cluster: Cluster;
+  noIngressSecurityGroup: SecurityGroup;
+  publicSubnet: ISubnet;
+}
+
+

@@ -20,6 +20,19 @@ export const ECS_TASK_STATE_RUNNING = "RUNNING";
 
 const region = importRegionEnvVar();
 
+interface RunTaskInput {
+  region: string;
+  clusterArn: string;
+  count?: number;
+  group: string;
+  securityGroupArns: Array<string>;
+  subnetArns: Array<string>;
+  taskDefinitionArn: string;
+  containerName: string;
+  environment: { [key: string]: string };
+  command?: Array<string>;
+}
+
 export async function runTask({
   region,
   clusterArn,
@@ -31,18 +44,7 @@ export async function runTask({
   containerName,
   environment = {},
   command,
-}: {
-  region: string;
-  clusterArn: string;
-  count?: number;
-  group: string;
-  securityGroupArns: Array<string>;
-  subnetArns: Array<string>;
-  taskDefinitionArn: string;
-  containerName: string;
-  environment: { [key: string]: string };
-  command?: Array<string>;
-}) {
+}: RunTaskInput) {
   const client = new ECSClient({ region });
 
   const adaptedEnvironment = Object.keys(environment).map((k) => {

@@ -4,28 +4,16 @@ import {
   IpAddresses,
   PrivateSubnet,
   PublicSubnet,
-  SecurityGroup,
-  SubnetType,
   Vpc,
 } from "aws-cdk-lib/aws-ec2";
 import { Construct } from "constructs";
 import {
-  buildEcsClusterArnSSMKey,
-  buildSecurityGroupArnSSMKey,
   validateEnvVar,
 } from "../utils";
 import { ACCOUNT, INSTANCE_ID, REGION } from "../environment-variables";
 import { FargateBaseStack } from "./ecs/fargate-base";
-import { Cluster } from "aws-cdk-lib/aws-ecs";
-import {
-  Effect,
-  PolicyDocument,
-  PolicyStatement,
-  Role,
-  ServicePrincipal,
-} from "aws-cdk-lib/aws-iam";
-import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 import { FargateStack } from "./ecs/fargate";
+import { BatchProcessorLambdaTop } from "./lambda/lambda-top";
 
 const region = validateEnvVar(REGION);
 const account = validateEnvVar(ACCOUNT);
@@ -71,6 +59,16 @@ export class BatchProcessorStack extends cdk.Stack {
       fargateTaskRole: fargateBase.fargateTaskRole,
       noIngressSecurityGroup: fargateBase.noIngressSecurityGroup,
       logGroup: fargateBase.logGroup,
+    });
+
+    new BatchProcessorLambdaTop(this, `batch-processor-lambda-top-${instanceId}`, {
+      env: {
+        region,
+        account,
+      },
+      cluster: fargateBase.cluster,
+      noIngressSecurityGroup: fargateBase.noIngressSecurityGroup,
+      publicSubnet: vpc.publicSubnets[0],
     });
   }
 }

@@ -4,7 +4,7 @@ async function fetchInputData() {
   return [1, 2, 3];
 }
 
-orchestrator({ 
+orchestrator({
   handleGenerateInputData: fetchInputData,
-  workerRunCommand: [`node dist/worker-example.js`],
+  workerRunCommand: ["node", "--enable-source-maps", "dist/worker-example.js"],
 }).then();
