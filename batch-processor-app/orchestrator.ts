@@ -3,22 +3,26 @@ import { nanoid } from "nanoid";
 import {
   BATCH_PARALLELISM,
   ECS_CLUSTER_ARN,
+  ECS_EXECUTION_ROLE_ARN,
   ECS_GROUP,
   ECS_SECURITY_GROUP_ARN,
   ECS_SUBNET_ARN,
+  ECS_TASK_ROLE_ARN,
   JOB_QUEUE_URL,
   JOB_STATUS_QUEUE_URL,
+  WORKER_IMAGE_NAME,
   WORKER_TASK_DEF_ARN,
 } from "../environment-variables";
 import {
   ECS_TASK_STATE_RUNNING,
-  deleteQueue,
+  createService,
   getTaskState,
-  runTask,
+  registerTaskDefinition,
   stopTask,
 } from "../lib/sdk-drivers/ecs/ecs-io";
 import {
   createQueue,
+  deleteQueue,
   receiveMessage,
   sendMessageBatch,
 } from "../lib/sdk-drivers/sqs/sqs-io";
@@ -41,6 +45,9 @@ const securityGroupArn = validateEnvVar(ECS_SECURITY_GROUP_ARN);
 const subnetArn = validateEnvVar(ECS_SUBNET_ARN);
 const workerTaskDefinitionArn = validateEnvVar(WORKER_TASK_DEF_ARN);
 const batchParallelism = parseInt(validateEnvVar(BATCH_PARALLELISM));
+const executionRoleArn = validateEnvVar(ECS_EXECUTION_ROLE_ARN);
+const taskRoleArn = validateEnvVar(ECS_TASK_ROLE_ARN);
+const workerImageName = validateEnvVar(WORKER_IMAGE_NAME);
 
 const MAX_RETRY_COUNT = 1000;
 const MAX_READ_STALL_COUNT = 1000;
@@ -113,11 +120,11 @@ async function setupPipeline(workerRunCommand: string[]) {
     workerRunCommand,
   });
 
-  const taskArns = await extractTaskArns(startedTasks);
+  // const taskArns = await extractTaskArns(startedTasks);
 
   await waitForTasksRunning();
 
-  return { queueUrls, taskArns };
+  return { queueUrls, taskArns: [] };
 }
 
 async function cleanUp({ queueUrls, taskArns }: QueueTaskArns) {
@@ -382,39 +389,70 @@ async function startWorkerTasks({
   jobStatusQueueUrl,
   workerRunCommand,
 }: StartWorkerTasksInput) {
-  const startedTasks: RunTaskCommandOutput[] = [];
-  let failCount = 0;
+  const taskDefinition = await registerTaskDefinition({
+    family: `batch-processor-worker-task-${uniqueId}`,
+    executionRoleArn: executionRoleArn,
+    taskRoleArn: taskRoleArn,
+    containerDefinitions: [
+      {
+        name: `batch-processor-worker-container-${uniqueId}`,
+        image: workerImageName,
+        memory: 1024,
+        cpu: 1024,
+        command: workerRunCommand,
+        environment: [
+          {
+            name: JOB_QUEUE_URL,
+            value: jobQueueUrl,
+          },
+          {
+            name: JOB_STATUS_QUEUE_URL,
+            value: jobStatusQueueUrl,
+          },
+        ],
+      },
+    ],
+  });
+  const createdService = await createService({
+    clusterArn,
+    serviceName: `batch-processor-worker-service-${uniqueId}`,
+    taskDefinitionArn: workerTaskDefinitionArn,
+    desiredCount: batchParallelism,
+    securityGroups: [securityGroupArn],
+    subnets: [subnetArn],
+  });
+  // Create fargate service with desired count = batchParallelism
 
   // We're only starting one at a time because we're less likely to get throttled
   // by AWS. Also retries are easier to handle.
-  do {
-    try {
-      const task = await runTask({
-        region,
-        clusterArn,
-        count: 1,
-        group,
-        securityGroupArns: [securityGroupArn],
-        subnetArns: [subnetArn],
-        taskDefinitionArn: workerTaskDefinitionArn,
-        containerName: `batch-worker-${uniqueId}-${startedTasks.length}`,
-        environment: {
-          [JOB_QUEUE_URL]: jobQueueUrl,
-          [JOB_STATUS_QUEUE_URL]: jobStatusQueueUrl,
-        },
-        command: workerRunCommand,
-      });
-      startedTasks.push(task);
-    } catch (e) {
-      failCount += 1;
-      console.error("Encountered exception while starting task: ", e);
-      if (failCount === MAX_RETRY_COUNT) {
-        throw e;
-      }
-    }
-  } while (
-    startedTasks.length < batchParallelism &&
-    failCount < MAX_RETRY_COUNT
-  );
-  return startedTasks;
+  // do {
+  //   try {
+  //     const task = await runTask({
+  //       region,
+  //       clusterArn,
+  //       count: 1,
+  //       group,
+  //       securityGroupArns: [securityGroupArn],
+  //       subnetArns: [subnetArn],
+  //       taskDefinitionArn: workerTaskDefinitionArn,
+  //       containerName: `batch-worker-${uniqueId}-${startedTasks.length}`,
+  //       environment: {
+  //         [JOB_QUEUE_URL]: jobQueueUrl,
+  //         [JOB_STATUS_QUEUE_URL]: jobStatusQueueUrl,
+  //       },
+  //       command: workerRunCommand,
+  //     });
+  //     startedTasks.push(task);
+  //   } catch (e) {
+  //     failCount += 1;
+  //     console.error("Encountered exception while starting task: ", e);
+  //     if (failCount === MAX_RETRY_COUNT) {
+  //       throw e;
+  //     }
+  //   }
+  // } while (
+  //   startedTasks.length < batchParallelism &&
+  //   failCount < MAX_RETRY_COUNT
+  // );
+  return createdService;
 }

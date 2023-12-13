@@ -1,5 +1,12 @@
 import { nanoid } from "nanoid";
-import { ECS_CLUSTER_ARN, ECS_GROUP, ECS_SECURITY_GROUP_ARN, ECS_SUBNET_ARN, ORCHESTRATOR_TASK_DEF_ARN, REGION } from "../../environment-variables";
+import {
+  ECS_CLUSTER_ARN,
+  ECS_GROUP,
+  ECS_SECURITY_GROUP_ARN,
+  ECS_SUBNET_ARN,
+  ORCHESTRATOR_TASK_DEF_ARN,
+  REGION,
+} from "../../environment-variables";
 import { validateEnvVar } from "../../utils";
 import { runTask } from "../sdk-drivers/ecs/ecs-io";
 
@@ -25,10 +32,8 @@ export const handler = async (event: InputEvent) => {
     securityGroupArns: [securityGroupArn],
     taskDefinitionArn,
     group,
-    subnetArns: [subnetArn  ],
+    subnetArns: [subnetArn],
     containerName: `batch-processor-orchestrator-${nanoid()}`,
     environment: {},
-  })
-
-
-}
+  });
+};

@@ -5,12 +5,29 @@ import { Role } from "aws-cdk-lib/aws-iam";
 import { ISecret, Secret } from "aws-cdk-lib/aws-secretsmanager";
 import { Construct } from "constructs";
 import { FargateProps } from "../../cdk-types";
-import { INSTANCE_ID } from "../../environment-variables";
+import {
+  ECS_CLUSTER_ARN,
+  ECS_EXECUTION_ROLE_ARN,
+  ECS_SECURITY_GROUP_ARN,
+  ECS_SUBNET_ARN,
+  ECS_TASK_ROLE_ARN,
+  INSTANCE_ID,
+  REGION,
+  WORKER_IMAGE_NAME,
+} from "../../environment-variables";
 import { validateEnvVar } from "../../utils";
 import { DOCKERHUB_SECRET_NAME } from "../../config/common-config";
 import { LogGroup } from "aws-cdk-lib/aws-logs";
+import {
+  ContainerImage,
+  FargateService,
+  FargateTaskDefinition,
+} from "aws-cdk-lib/aws-ecs";
 
 const instanceId = validateEnvVar(INSTANCE_ID);
+
+const orchestratorImageName = "ianwcarlson/batch-processor-orchestrator:latest";
+const workerImageName = "ianwcarlson/batch-processor-worker:latest";
 
 interface FargateServiceConfigInterface {
   Cpu: number;
@@ -34,7 +51,6 @@ interface FargateServiceConfigInterface {
 }
 
 export class FargateStack extends NestedStack {
-  private vpc: IVpc;
   private dockerHubSecret: ISecret;
   private cluster: aws_ecs.Cluster;
   private contextId: string;
@@ -42,7 +58,6 @@ export class FargateStack extends NestedStack {
   private fargateTaskRole: Role;
   private noIngressSecurityGroup: SecurityGroup;
   private publicSubnet: ISubnet;
-  private dockerhubSecret: ISecret;
   public region: string;
   private logGroup: LogGroup;
 
@@ -60,7 +75,6 @@ export class FargateStack extends NestedStack {
       env: { region },
     } = props;
 
-    this.vpc = vpc;
     this.cluster = cluster;
     this.fargateTaskRole = fargateTaskRole;
     this.fargateExecutionRole = fargateExecutionRole;
@@ -69,7 +83,7 @@ export class FargateStack extends NestedStack {
     this.region = region;
     this.logGroup = logGroup;
 
-    this.dockerhubSecret = Secret.fromSecretNameV2(
+    this.dockerHubSecret = Secret.fromSecretNameV2(
       scope,
       `dockerhub-secret-${instanceId}`,
       DOCKERHUB_SECRET_NAME,
@@ -85,8 +99,10 @@ export class FargateStack extends NestedStack {
       // We only run this on-demand
       DesiredCount: 0,
       ServicePrefixId: "tbd",
-      Image: "node:20",
-      environment: {},
+      Image: orchestratorImageName,
+      environment: {
+        [WORKER_IMAGE_NAME]: workerImageName,
+      },
       secrets: {
         // GENERIC_API_TOKEN: aws_ecs.Secret.fromSecretsManager(
         //   this.genericApiToken,
@@ -111,7 +127,7 @@ export class FargateStack extends NestedStack {
     //   family: params.ServicePrefixId,
     // }));
 
-    const taskDefinition = new aws_ecs.FargateTaskDefinition(
+    const taskDefinition = new FargateTaskDefinition(
       this,
       `task-${params.ServicePrefixId}`,
       {
@@ -124,7 +140,7 @@ export class FargateStack extends NestedStack {
     );
 
     const fargateContainerProps = {
-      image: aws_ecs.ContainerImage.fromRegistry(params.Image, {
+      image: ContainerImage.fromRegistry(params.Image, {
         credentials: this.dockerHubSecret,
       }),
       cpu: params.Cpu,
@@ -157,7 +173,8 @@ export class FargateStack extends NestedStack {
     const fargateServiceConfig = Number.isNaN(params.DesiredCount)
       ? configBase
       : { ...configBase, desiredCount: params.DesiredCount };
-    const service = new aws_ecs.FargateService(
+
+    const service = new FargateService(
       this,
       `${params.ServicePrefixId}-${this.contextId}-service`,
       fargateServiceConfig,
@@ -175,12 +192,13 @@ export class FargateStack extends NestedStack {
       },
       environment: {
         SERVICE_PREFIX_ID: params.ServicePrefixId,
-        CONTEXT_ID: this.contextId,
-        REGION: this.region,
+        [REGION]: this.region,
 
-        ECS_CLUSTER: this.cluster.clusterArn,
-        ECS_SECURITY_GROUP: this.noIngressSecurityGroup.securityGroupId,
-        ECS_SUBNET: this.publicSubnet.subnetId,
+        [ECS_CLUSTER_ARN]: this.cluster.clusterArn,
+        [ECS_SECURITY_GROUP_ARN]: this.noIngressSecurityGroup.securityGroupId,
+        [ECS_SUBNET_ARN]: this.publicSubnet.subnetId,
+        [ECS_TASK_ROLE_ARN]: this.fargateTaskRole.roleArn,
+        [ECS_EXECUTION_ROLE_ARN]: this.fargateExecutionRole.roleArn,
 
         ...params.environment,
       },

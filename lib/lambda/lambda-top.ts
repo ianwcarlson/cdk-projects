@@ -1,13 +1,13 @@
-import {
-  Duration,
-  Size,
-  aws_iam,
-  NestedStack,
-} from "aws-cdk-lib";
+import { Duration, Size, aws_iam, NestedStack } from "aws-cdk-lib";
 import { NodejsFunction, SourceMapMode } from "aws-cdk-lib/aws-lambda-nodejs";
 import { RetentionDays } from "aws-cdk-lib/aws-logs";
 import { Construct } from "constructs";
-import { ECS_CLUSTER_ARN, ECS_SECURITY_GROUP_ARN, ECS_SUBNET_ARN, REGION } from "../../environment-variables";
+import {
+  ECS_CLUSTER_ARN,
+  ECS_SECURITY_GROUP_ARN,
+  ECS_SUBNET_ARN,
+  REGION,
+} from "../../environment-variables";
 import { ManagedPolicy } from "aws-cdk-lib/aws-iam";
 import { BatchProcessorLambdaTopProps } from "../../cdk-types";
 
@@ -159,12 +159,9 @@ export class BatchProcessorLambdaTop extends NestedStack {
 
     this.lambdas.startBatchProcessor = this.createLambda({
       id: "start-batch-processor",
-      description: "Starts the orchestrator which will start the batch processor",
-      environment: {
-        [ECS_CLUSTER_ARN]: cluster.clusterArn,
-        [ECS_SECURITY_GROUP_ARN]: noIngressSecurityGroup.securityGroupId,
-        [ECS_SUBNET_ARN]: publicSubnet.subnetId,
-      }
+      description:
+        "Starts the orchestrator which will start the batch processor",
+      environment: {},
     });
   }
 }

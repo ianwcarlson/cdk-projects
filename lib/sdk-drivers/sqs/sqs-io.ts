@@ -1,5 +1,6 @@
 import {
   CreateQueueCommand,
+  DeleteQueueCommand,
   ReceiveMessageCommand,
   SendMessageBatchCommand,
   SendMessageCommand,
@@ -153,6 +154,15 @@ export async function receiveMessage({
   //     },
   //   ],
   // };
+}
+
+export async function deleteQueue(queueUrl: string) {
+  const input = {
+    QueueUrl: queueUrl,
+  };
+  const command = new DeleteQueueCommand(input);
+  const response = await sqsClient.send(command);
+  return response;
 }
 
 export async function getQueueStatus() {}

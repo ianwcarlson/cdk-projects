@@ -7,9 +7,7 @@ import {
   Vpc,
 } from "aws-cdk-lib/aws-ec2";
 import { Construct } from "constructs";
-import {
-  validateEnvVar,
-} from "../utils";
+import { validateEnvVar } from "../utils";
 import { ACCOUNT, INSTANCE_ID, REGION } from "../environment-variables";
 import { FargateBaseStack } from "./ecs/fargate-base";
 import { FargateStack } from "./ecs/fargate";
@@ -61,14 +59,18 @@ export class BatchProcessorStack extends cdk.Stack {
       logGroup: fargateBase.logGroup,
     });
 
-    new BatchProcessorLambdaTop(this, `batch-processor-lambda-top-${instanceId}`, {
-      env: {
-        region,
-        account,
+    new BatchProcessorLambdaTop(
+      this,
+      `batch-processor-lambda-top-${instanceId}`,
+      {
+        env: {
+          region,
+          account,
+        },
+        cluster: fargateBase.cluster,
+        noIngressSecurityGroup: fargateBase.noIngressSecurityGroup,
+        publicSubnet: vpc.publicSubnets[0],
       },
-      cluster: fargateBase.cluster,
-      noIngressSecurityGroup: fargateBase.noIngressSecurityGroup,
-      publicSubnet: vpc.publicSubnets[0],
-    });
+    );
   }
 }

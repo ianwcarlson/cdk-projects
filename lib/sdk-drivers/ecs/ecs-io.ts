@@ -9,10 +9,15 @@ import {
   ListClustersCommandInput,
   DescribeClustersCommand,
   StopTaskCommand,
+  RegisterTaskDefinitionCommand,
+  CreateServiceCommand,
+  DeregisterTaskDefinitionCommand,
 } from "@aws-sdk/client-ecs";
 import { importRegionEnvVar, sleep } from "../../../utils";
 import { DeleteQueueCommand } from "@aws-sdk/client-sqs";
 import { sqsClient } from "../sqs/sqs-client";
+import { ecsClient } from "./ecs-client";
+import { availableParallelism } from "os";
 
 const RETRY_WAIT_MS = 200;
 export const ECS_TASK_STATE_STOPPED = "STOPPED";
@@ -285,11 +290,104 @@ export async function findEcsClusterArn(clusterName: string) {
   return foundCluster;
 }
 
-export async function deleteQueue(queueUrl: string) {
-  const input = {
-    QueueUrl: queueUrl,
+interface RegisterTaskDefinitionInput {
+  family: string;
+  taskRoleArn: string;
+  executionRoleArn: string;
+  containerDefinitions: Array<{
+    name: string;
+    image: string;
+    environment: Array<{ name: string; value: string }>;
+    command?: Array<string>;
+    cpu: number;
+    memory: number;
+  }>;
+  ephemeralStorage?: {
+    sizeInGiB: number;
   };
-  const command = new DeleteQueueCommand(input);
-  const response = await sqsClient.send(command);
-  return response;
+  runtimePlatform?: {
+    cpuArchitecture: string;
+    operatingSystem: string;
+  };
+}
+
+export async function registerTaskDefinition({
+  family,
+  containerDefinitions,
+}: RegisterTaskDefinitionInput) {
+  const input = {
+    family,
+    containerDefinitions,
+  };
+  const command = new RegisterTaskDefinitionCommand(input);
+  return await ecsClient.send(command);
+}
+
+interface DeregisterTaskDefinitionCommandInput {
+  taskDefinitionArn: string;
+}
+
+export async function deregisterTaskDefinitions({
+  taskDefinitionArn,
+}: DeregisterTaskDefinitionCommandInput) {
+  const input = {
+    taskDefinition: taskDefinitionArn,
+  };
+  const command = new DeregisterTaskDefinitionCommand(input);
+}
+
+interface CreateServiceInput {
+  clusterArn: string;
+  serviceName: string;
+  taskDefinitionArn: string;
+  desiredCount: number;
+  launchType?: LaunchType;
+  securityGroups: Array<string>;
+  subnets: Array<string>;
+  healthCheckGracePeriodSeconds?: number;
+}
+
+export async function createService({
+  clusterArn,
+  serviceName,
+  taskDefinitionArn,
+  desiredCount,
+  launchType = LaunchType.FARGATE,
+  securityGroups,
+  subnets,
+  healthCheckGracePeriodSeconds = 90,
+}: CreateServiceInput) {
+  const input = {
+    cluster: clusterArn,
+    serviceName,
+    taskDefinition: taskDefinitionArn,
+    desiredCount,
+    LaunchType: launchType,
+    networkConfiguration: {
+      awsvpcConfiguration: {
+        assignPublicIp: AssignPublicIp.DISABLED,
+        securityGroups,
+        subnets,
+      },
+    },
+    healthCheckGracePeriodSeconds,
+  };
+  const command = new CreateServiceCommand(input);
+  return await ecsClient.send(command);
+}
+
+interface DeleteServiceInput {
+  serviceArn: string;
+  clusterArn: string;
+}
+
+export async function deleteService({
+  serviceArn,
+  clusterArn,
+}: DeleteServiceInput) {
+  const input = {
+    service: serviceArn,
+    cluster: clusterArn,
+    force: true,
+  };
 }
