@@ -1,6 +1,6 @@
 import { NestedStackProps, StackProps } from "aws-cdk-lib";
 import { ISubnet, SecurityGroup, Vpc } from "aws-cdk-lib/aws-ec2";
-import { Cluster } from "aws-cdk-lib/aws-ecs";
+import { Cluster, FargateTaskDefinition } from "aws-cdk-lib/aws-ecs";
 import { Role } from "aws-cdk-lib/aws-iam";
 import { LogGroup } from "aws-cdk-lib/aws-logs";
 
@@ -30,4 +30,6 @@ export interface BatchProcessorLambdaTopProps extends NestedStackProps {
   cluster: Cluster;
   noIngressSecurityGroup: SecurityGroup;
   publicSubnet: ISubnet;
+  orchestratorTaskDefinition: FargateTaskDefinition;
+  batchProcessorEcsGroup: string;
 }

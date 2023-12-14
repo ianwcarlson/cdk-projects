@@ -4,8 +4,10 @@ import { RetentionDays } from "aws-cdk-lib/aws-logs";
 import { Construct } from "constructs";
 import {
   ECS_CLUSTER_ARN,
+  ECS_GROUP,
   ECS_SECURITY_GROUP_ARN,
   ECS_SUBNET_ARN,
+  ORCHESTRATOR_TASK_DEF_ARN,
   REGION,
 } from "../../environment-variables";
 import { ManagedPolicy } from "aws-cdk-lib/aws-iam";
@@ -34,8 +36,6 @@ export class BatchProcessorLambdaTop extends NestedStack {
 
     const region = props.env?.region || "";
     const account = props.env?.account || "";
-
-    const { cluster, noIngressSecurityGroup, publicSubnet } = props;
 
     const inlinePolicies = {
       defaultPolicy: new aws_iam.PolicyDocument({
@@ -161,7 +161,13 @@ export class BatchProcessorLambdaTop extends NestedStack {
       id: "start-batch-processor",
       description:
         "Starts the orchestrator which will start the batch processor",
-      environment: {},
+      environment: {
+        [ECS_CLUSTER_ARN]: props.cluster.clusterArn,
+        [ECS_SECURITY_GROUP_ARN]: props.noIngressSecurityGroup.securityGroupId,
+        [ECS_SUBNET_ARN]: props.publicSubnet.subnetId,
+        [ORCHESTRATOR_TASK_DEF_ARN]: props.orchestratorTaskDefinition.taskDefinitionArn,
+        [ECS_GROUP]: props.batchProcessorEcsGroup,
+      },
     });
   }
 }

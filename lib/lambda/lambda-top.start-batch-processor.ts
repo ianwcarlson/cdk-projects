@@ -1,5 +1,6 @@
 import { nanoid } from "nanoid";
 import {
+  BATCH_PARALLELISM,
   ECS_CLUSTER_ARN,
   ECS_GROUP,
   ECS_SECURITY_GROUP_ARN,
@@ -19,12 +20,21 @@ const group = validateEnvVar(ECS_GROUP);
 
 interface InputEvent {
   command?: string[];
+  numWorkers?: number;
 }
 
 export const handler = async (event: InputEvent) => {
   console.log("start-batch-processor: event", event);
 
-  const { command } = event;
+  const { numWorkers } = event;
+
+  /**
+   * So it turns out we need to dynamically create the service so that a public
+   * ip address can be assigned, which is required for internet access. Therefore,
+   * this lambda will create a service with a desired count of 1. The service will
+   * take ownership of the running task. If we just run the task outside of a service,
+   * it seems like the public ip doesn't get assigned.
+   */
 
   await runTask({
     region,
@@ -33,7 +43,9 @@ export const handler = async (event: InputEvent) => {
     taskDefinitionArn,
     group,
     subnetArns: [subnetArn],
-    containerName: `batch-processor-orchestrator-${nanoid()}`,
-    environment: {},
+    containerName: group,
+    environment: {
+      [BATCH_PARALLELISM]: numWorkers?.toString() || "2"
+    },
   });
 };

@@ -26,8 +26,8 @@ import {
 
 const instanceId = validateEnvVar(INSTANCE_ID);
 
-const orchestratorImageName = "ianwcarlson/batch-processor-orchestrator:latest";
-const workerImageName = "ianwcarlson/batch-processor-worker:latest";
+const orchestratorImageName = "ianwcarlson/batch-processor:latest";
+const workerImageName = "ianwcarlson/batch-processor:latest";
 
 interface FargateServiceConfigInterface {
   Cpu: number;
@@ -60,13 +60,14 @@ export class FargateStack extends NestedStack {
   private publicSubnet: ISubnet;
   public region: string;
   private logGroup: LogGroup;
+  public orchestratorTaskDefinition: FargateTaskDefinition;
+  public batchProcessorEcsGroup: string;
 
   constructor(scope: Construct, id: string, props: FargateProps) {
     super(scope, id, props);
 
     const {
       publicSubnet,
-      vpc,
       cluster,
       fargateExecutionRole,
       fargateTaskRole,
@@ -83,11 +84,11 @@ export class FargateStack extends NestedStack {
     this.region = region;
     this.logGroup = logGroup;
 
-    this.dockerHubSecret = Secret.fromSecretNameV2(
-      scope,
-      `dockerhub-secret-${instanceId}`,
-      DOCKERHUB_SECRET_NAME,
-    );
+    // this.dockerHubSecret = Secret.fromSecretCompleteArn(
+    //   scope,
+    //   "dockerhub-secret",
+    //   "arn:aws:secretsmanager:us-west-1:264099909671:secret:dockerhub-credentials-gBJwvy",
+    // );
 
     const Orchestrator: FargateServiceConfigInterface = {
       Cpu: 1024,
@@ -98,7 +99,7 @@ export class FargateStack extends NestedStack {
       EntryPoint: ["sh", "-c"],
       // We only run this on-demand
       DesiredCount: 0,
-      ServicePrefixId: "tbd",
+      ServicePrefixId: "batch-processor-orchestrator",
       Image: orchestratorImageName,
       environment: {
         [WORKER_IMAGE_NAME]: workerImageName,
@@ -111,7 +112,11 @@ export class FargateStack extends NestedStack {
       },
     };
 
-    this.instantiateFargateService({ params: Orchestrator });
+    // Worker task definition is created dynamically in the orchestrator task
+
+    const { taskDefinition } = this.instantiateFargateService({ params: Orchestrator });
+    this.orchestratorTaskDefinition = taskDefinition;
+    this.batchProcessorEcsGroup = Orchestrator.ServicePrefixId;
   }
 
   private instantiateFargateService = ({
@@ -140,9 +145,9 @@ export class FargateStack extends NestedStack {
     );
 
     const fargateContainerProps = {
-      image: ContainerImage.fromRegistry(params.Image, {
-        credentials: this.dockerHubSecret,
-      }),
+      image: ContainerImage.fromRegistry(params.Image), // {
+      //  credentials: this.dockerHubSecret,
+      //}),
       cpu: params.Cpu,
       memoryLimitMiB: params.MemoryMB,
       startTimeout: Duration.seconds(360),
@@ -154,14 +159,16 @@ export class FargateStack extends NestedStack {
     };
 
     const containerDefinition = taskDefinition.addContainer(
-      "containerName", // TBD
+      params.ServicePrefixId, // TBD
       fargateContainerProps,
     );
 
     const configBase = {
       cluster: this.cluster,
       taskDefinition,
-      assignPublicIp: false,
+      // We need to assign a public IP so that the container can access the internet
+      // The security group is set to no ingress, so it's not a security risk
+      assignPublicIp: true,
       vpcSubnets: {
         subnets: [this.publicSubnet],
       },

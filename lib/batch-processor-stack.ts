@@ -4,6 +4,7 @@ import {
   IpAddresses,
   PrivateSubnet,
   PublicSubnet,
+  SubnetType,
   Vpc,
 } from "aws-cdk-lib/aws-ec2";
 import { Construct } from "constructs";
@@ -32,6 +33,10 @@ export class BatchProcessorStack extends cdk.Stack {
       natGateways: 0,
     });
 
+    const selection = vpc.selectSubnets({
+      subnetType: SubnetType.PUBLIC
+    });
+  
     const fargateBase = new FargateBaseStack(
       this,
       `fargate-base-stack-${instanceId}`,
@@ -41,17 +46,17 @@ export class BatchProcessorStack extends cdk.Stack {
           account,
         },
         vpc,
-        publicSubnet: vpc.publicSubnets[0],
+        publicSubnet: selection.subnets[0],
       },
     );
 
-    new FargateStack(this, `fargate-stack-${instanceId}`, {
+    const fargateStack = new FargateStack(this, `fargate-stack-${instanceId}`, {
       env: {
         region,
         account,
       },
       vpc,
-      publicSubnet: vpc.publicSubnets[0],
+      publicSubnet: selection.subnets[0],
       cluster: fargateBase.cluster,
       fargateExecutionRole: fargateBase.fargateExecutionRole,
       fargateTaskRole: fargateBase.fargateTaskRole,
@@ -69,7 +74,9 @@ export class BatchProcessorStack extends cdk.Stack {
         },
         cluster: fargateBase.cluster,
         noIngressSecurityGroup: fargateBase.noIngressSecurityGroup,
-        publicSubnet: vpc.publicSubnets[0],
+        publicSubnet: selection.subnets[0],
+        orchestratorTaskDefinition: fargateStack.orchestratorTaskDefinition,
+        batchProcessorEcsGroup: fargateStack.batchProcessorEcsGroup,
       },
     );
   }
