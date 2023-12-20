@@ -142,6 +142,7 @@ async function setupPipeline(workerRunCommand: string[]) {
         memory: WorkerMemoryMB,
         cpu: WorkerCpu,
         command: workerRunCommand,
+        entryPoint: ["sh", "-c"],
         logConfiguration: {
           logDriver: "awslogs",
           options: {

@@ -66,9 +66,6 @@ export async function createQueue({
   };
   const command = new CreateQueueCommand(input);
   const response = await sqsClient.send(command);
-  // { // CreateQueueResult
-  //   QueueUrl: "STRING_VALUE",
-  // };
 
   return response;
 }
@@ -176,6 +173,7 @@ export async function listQueues({
     const response = await sqsClient.send(command);
     nextToken = response.NextToken;
     queueUrls.push(...(response.QueueUrls || []));
+    console.log("queueUrls", queueUrls);
   } while (nextToken);
 
   return queueUrls;
