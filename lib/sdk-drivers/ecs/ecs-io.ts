@@ -13,8 +13,12 @@ import {
   CreateServiceCommand,
   DeregisterTaskDefinitionCommand,
   RegisterTaskDefinitionCommandInput,
+  DeleteServiceCommand,
+  ListServicesCommand,
+  ListServicesCommandInput,
+  DescribeServicesCommand,
 } from "@aws-sdk/client-ecs";
-import { importRegionEnvVar, sleep } from "../../../utils";
+import { groupArray, importRegionEnvVar, sleep } from "../../../utils";
 import { DeleteQueueCommand } from "@aws-sdk/client-sqs";
 import { sqsClient } from "../sqs/sqs-client";
 import { ecsClient } from "./ecs-client";
@@ -360,9 +364,86 @@ export async function deleteService({
   serviceArn,
   clusterArn,
 }: DeleteServiceInput) {
+  console.log("Deleting service " + serviceArn);
   const input = {
     service: serviceArn,
     cluster: clusterArn,
     force: true,
   };
+  const command = new DeleteServiceCommand(input);
+  return ecsClient.send(command);
+}
+
+interface ListServicesInput {
+  clusterArn: string;
+  serviceName?: string;
+}
+
+export async function listServices({
+  clusterArn,
+}: ListServicesInput) {
+  const input = {
+    cluster: clusterArn,
+  };
+  let nextToken;
+  const services: string[] = [];
+
+  do {
+    const command = new ListServicesCommand(input);
+    const response = await ecsClient.send(command);
+    if (response.serviceArns) {
+      console.log("Found services: " + response.serviceArns.join(", "));
+      services.push(...response.serviceArns);
+    }
+
+    nextToken = response.nextToken;
+  } while (nextToken);
+
+  return services;
+}
+
+interface DescribeServicesInput {
+  clusterArn: string;
+  serviceArns: string[];
+  include?: object[];
+}
+
+export async function describeServices({
+  clusterArn,
+  serviceArns,
+}: DescribeServicesInput) {
+  const input = {
+    cluster: clusterArn,
+    services: serviceArns,
+  };
+  const command = new DescribeServicesCommand(input);
+  return ecsClient.send(command);
+}
+
+export async function findServiceByName({
+  clusterArn,
+  serviceName,
+}: {
+  clusterArn: string;
+  serviceName: string;
+}) {
+  const serviceArns = await listServices({ clusterArn });
+
+  // Can only describe 10 services at a time
+  const serviceArnGroups = groupArray(serviceArns, 10);
+  for (const serviceArnGroup of serviceArnGroups) {
+    const response = await describeServices({
+      clusterArn,
+      serviceArns: serviceArnGroup,
+    });
+    const foundService = (response.services || []).find(
+      (s) => s.serviceName === serviceName,
+    );
+    if (foundService) {
+      console.log("Found service " + foundService.serviceName);
+      return foundService;
+    }
+  }
+
+  return null;
 }

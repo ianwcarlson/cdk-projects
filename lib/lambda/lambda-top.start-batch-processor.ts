@@ -7,16 +7,21 @@ import {
   ECS_SECURITY_GROUP_ARN,
   ECS_SUBNET_ARN,
   ECS_TASK_ROLE_ARN,
+  ORCHESTRATOR_SERVICE_NAME,
+  PROCESS_ID,
   REGION,
+  WORKER_IMAGE_NAME,
   WORKER_TASK_DEF_ARN,
 } from "../../environment-variables";
 import { validateEnvVar } from "../../utils";
 import {
   createService,
   registerTaskDefinition,
-  runTask,
 } from "../sdk-drivers/ecs/ecs-io";
-import { createLogGroup, describeLogGroups } from "../sdk-drivers/cloudwatch/cloudwatch-io";
+import {
+  createLogGroup,
+  describeLogGroups,
+} from "../sdk-drivers/cloudwatch/cloudwatch-io";
 
 const region = validateEnvVar(REGION);
 const cluster = validateEnvVar(ECS_CLUSTER_ARN);
@@ -37,6 +42,10 @@ export const handler = async (event: InputEvent) => {
   console.log("start-batch-processor: event", event);
 
   console.log(`Creating log group ${LOG_GROUP_NAME}`);
+
+  // millisecond precision should be good enough
+  const processId = new Date().toISOString();
+  const orchestratorServiceName = `batch-processor-orchestrator-${processId}`;
 
   const logGroups = await describeLogGroups({
     logGroupNamePattern: LOG_GROUP_NAME,
@@ -87,7 +96,6 @@ export const handler = async (event: InputEvent) => {
           entryPoint,
           cpu,
           memory,
-          // workingDirectory: "/code",
           logConfiguration: {
             logDriver: "awslogs",
             options: {
@@ -124,29 +132,41 @@ export const handler = async (event: InputEvent) => {
     });
   }
 
-  const workerTaskDefinitionResponse = await createTaskDefinition({
-    command: ["node worker-example.js"],
-    cpu: 1024,
-    memory: 2048,
-  });
+  // const workerTaskDefinitionResponse = await createTaskDefinition({
+  //   command: ["node worker-example.js"],
+  //   cpu: 1024,
+  //   memory: 2048,
+  // });
 
-  if (!workerTaskDefinitionResponse.taskDefinition?.taskDefinitionArn) {
-    throw new Error("Unable to create orchestrator task definition");
-  }
+  // if (!workerTaskDefinitionResponse.taskDefinition?.taskDefinitionArn) {
+  //   throw new Error("Unable to create orchestrator task definition");
+  // }
 
   const orchestratorTaskDefinitionResponse = await createTaskDefinition({
     command: ["node orchestrator-example.js"],
     cpu: 1024,
     memory: 2048,
     environment: [
-      {
-        name: WORKER_TASK_DEF_ARN,
-        value: workerTaskDefinitionResponse.taskDefinition?.taskDefinitionArn,
-      },
+      // {
+      //   name: WORKER_TASK_DEF_ARN,
+      //   value: workerTaskDefinitionResponse.taskDefinition?.taskDefinitionArn,
+      // },
       {
         name: BATCH_PARALLELISM,
         value: event.numWorkers?.toString() || "1",
       },
+      {
+        name: WORKER_IMAGE_NAME,
+        value: "ianwcarlson/batch-processor:latest",
+      },
+      {
+        name: PROCESS_ID,
+        value: processId,
+      },
+      {
+        name: ORCHESTRATOR_SERVICE_NAME,
+        value: orchestratorServiceName,
+      }
     ],
   });
 
@@ -155,7 +175,7 @@ export const handler = async (event: InputEvent) => {
   }
 
   await createService({
-    serviceName: `batch-processor-${Date.now()}`,
+    serviceName: orchestratorServiceName,
     desiredCount: 1,
     clusterArn: cluster,
     securityGroups: [securityGroupArn],

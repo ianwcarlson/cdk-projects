@@ -15,9 +15,7 @@ export async function createLogGroup(logGroupName: string) {
   return cloudwatchLogsClient.send(command);
 }
 
-export async function describeLogGroups(
-  input: DescribeLogGroupsCommandInput,
-) {
+export async function describeLogGroups(input: DescribeLogGroupsCommandInput) {
   const command = new DescribeLogGroupsCommand(input);
   return cloudwatchLogsClient.send(command);
 }

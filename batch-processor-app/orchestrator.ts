@@ -9,13 +9,18 @@ import {
   ECS_TASK_ROLE_ARN,
   JOB_QUEUE_URL,
   JOB_STATUS_QUEUE_URL,
+  ORCHESTRATOR_SERVICE_NAME,
+  PROCESS_ID,
+  REGION,
   WORKER_IMAGE_NAME,
-  WORKER_TASK_DEF_ARN,
 } from "../environment-variables";
 import {
   ECS_TASK_STATE_RUNNING,
   createService,
+  deleteService,
+  findServiceByName,
   getTaskState,
+  listServices,
   registerTaskDefinition,
   stopTask,
 } from "../lib/sdk-drivers/ecs/ecs-io";
@@ -42,20 +47,17 @@ const region = importRegionEnvVar();
 const clusterArn = validateEnvVar(ECS_CLUSTER_ARN);
 const securityGroupArn = validateEnvVar(ECS_SECURITY_GROUP_ARN);
 const subnetArn = validateEnvVar(ECS_SUBNET_ARN);
-const workerTaskDefinitionArn = validateEnvVar(WORKER_TASK_DEF_ARN);
+// const workerTaskDefinitionArn = validateEnvVar(WORKER_TASK_DEF_ARN);
 const batchParallelism = parseInt(validateEnvVar(BATCH_PARALLELISM));
 const executionRoleArn = validateEnvVar(ECS_EXECUTION_ROLE_ARN);
 const taskRoleArn = validateEnvVar(ECS_TASK_ROLE_ARN);
 const workerImageName = validateEnvVar(WORKER_IMAGE_NAME);
+const processId = validateEnvVar(PROCESS_ID);
+const orchestratorServiceName = validateEnvVar(ORCHESTRATOR_SERVICE_NAME);
 
 const MAX_RETRY_COUNT = 1000;
 const MAX_READ_STALL_COUNT = 1000;
 const MAX_WORKER_RETRY_COUNT = 2;
-
-interface QueueTaskArns {
-  queueUrls: string[];
-  taskArns: string[];
-}
 
 interface OrchestratorInput {
   handleGenerateInputData: { (): Promise<Array<string | number>> };
@@ -70,53 +72,107 @@ export async function orchestrator({
   handleJobStatusResponse,
   workerRunCommand,
 }: OrchestratorInput) {
-  let queueUrls: string[] | undefined = [];
-  let taskArns: string[] | undefined = [];
+  let queueUrls: {
+    jobQueueUrl: string;
+    jobStatusQueueUrl: string;
+  } | undefined;
+  let serviceArn: string | undefined;
 
   const inputData = await handleGenerateInputData();
   try {
-    const responses = await setupPipeline(workerRunCommand);
-    queueUrls = responses.queueUrls;
-    taskArns = responses.taskArns;
+    const services = await setupPipeline(workerRunCommand);
+    queueUrls = services.queueUrls;
+    serviceArn = services.workerServiceArn;
 
     await writeBatches({
       inputData,
-      workerQueueUrl: queueUrls[0],
-      workerStatusQueueUrl: queueUrls[1],
+      workerQueueUrl: queueUrls.jobQueueUrl,
+      workerStatusQueueUrl: queueUrls.jobStatusQueueUrl,
       jobProperties: {},
       handleJobStatusResponse,
     });
   } catch (e) {
     console.error("Encountered exception: ", e);
   } finally {
-    await cleanUp({ queueUrls, taskArns });
+    await cleanUp({ queueUrls: [queueUrls?.jobQueueUrl, queueUrls?.jobStatusQueueUrl], workerServiceArn: serviceArn });
   }
 }
 
 async function setupPipeline(workerRunCommand: string[]) {
   console.log("orchestrator starting");
 
-  const uniqueId = nanoid();
-  const jobQueueName = `job-queue-${uniqueId}`;
-  const jobStatusQueueName = `job-status-queue-${uniqueId}`;
+  const jobQueueName = `job-queue-${processId}`;
+  const jobStatusQueueName = `job-status-queue-${processId}`;
 
   console.log("Creating job queue and response state queues");
 
   // Documentation says to wait at least a second, but starting tasks
   // should easily cover that
-  const createQueueValues = await createQueues({
+  const { jobQueueUrl, jobStatusQueueUrl } = await createQueues({
     jobQueueName,
     jobStatusQueueName,
   });
 
-  const queueUrls = await extractQueueUrls(createQueueValues);
+  console.log("Creating worker task definition");
+
+  const workerTaskDefinitionResponse = await registerTaskDefinition({
+    family: `batch-processor-worker-family-${processId}`,
+    executionRoleArn: executionRoleArn,
+    taskRoleArn: taskRoleArn,
+    containerDefinitions: [
+      {
+        name: `batch-processor-worker-container-${processId}`,
+        image: workerImageName,
+        memory: 1024,
+        cpu: 1024,
+        command: workerRunCommand,
+        environment: [
+          {
+            name: JOB_QUEUE_URL,
+            value: jobQueueUrl,
+          },
+          {
+            name: JOB_STATUS_QUEUE_URL,
+            value: jobStatusQueueUrl,
+          },
+          {
+            name: REGION,
+            value: region,
+          },
+          {
+            name: ECS_CLUSTER_ARN,
+            value: clusterArn,
+          },
+          {
+            name: ECS_SECURITY_GROUP_ARN,
+            value: securityGroupArn,
+          },
+          {
+            name: ECS_SUBNET_ARN,
+            value: subnetArn,
+          },
+        ],
+      },
+    ],
+  });
+
+  if (
+    !workerTaskDefinitionResponse.taskDefinition ||
+    !workerTaskDefinitionResponse.taskDefinition.taskDefinitionArn
+  ) {
+    throw new Error(
+      "Unable to create worker task definition: " +
+        JSON.stringify(workerTaskDefinitionResponse),
+    );
+  }
 
   console.log("Creating worker service");
 
   const createdService = await createService({
     clusterArn,
-    serviceName: `batch-processor-worker-service-${uniqueId}`,
-    taskDefinitionArn: workerTaskDefinitionArn,
+    serviceName: `batch-processor-worker-service-${processId}`,
+    taskDefinitionArn:
+      workerTaskDefinitionResponse.taskDefinition.taskDefinitionArn,
     desiredCount: batchParallelism,
     securityGroups: [securityGroupArn],
     subnets: [subnetArn],
@@ -132,22 +188,43 @@ async function setupPipeline(workerRunCommand: string[]) {
 
   // const taskArns = await extractTaskArns(startedTasks);
 
-  await waitForTasksRunning();
+  // await waitForTasksRunning();
 
-  return { queueUrls, taskArns: [] };
+  return {
+    queueUrls: { jobQueueUrl, jobStatusQueueUrl },
+    workerServiceArn: createdService.service?.serviceArn,
+  };
 }
 
-async function cleanUp({ queueUrls, taskArns }: QueueTaskArns) {
-  for (const taskArn of taskArns) {
-    await stopTask({
-      region,
-      taskArn,
-      reason: "Cleaning up batch-processing tasks",
+interface QueueTaskArns {
+  queueUrls: (string | undefined)[];
+  workerServiceArn: string | undefined;
+}
+
+async function cleanUp({ queueUrls, workerServiceArn }: QueueTaskArns) {
+  if (workerServiceArn) {
+    await deleteService({
+      serviceArn: workerServiceArn,
       clusterArn,
     });
   }
+
   for (const queueUrl of queueUrls) {
-    await deleteQueue(queueUrl);
+    if (queueUrl) {
+      await deleteQueue(queueUrl);
+    }
+  }
+
+  // And for my next trick, I will delete myself
+  const orchestratorService = await findServiceByName({
+    clusterArn,
+    serviceName: orchestratorServiceName,
+  });
+  if (orchestratorService && orchestratorService.serviceArn) {
+    await deleteService({
+      serviceArn: orchestratorService.serviceArn,
+      clusterArn,
+    });
   }
 }
 
@@ -165,7 +242,8 @@ async function createQueues({
       createQueue({ queueName: jobQueueName }),
       createQueue({ queueName: jobStatusQueueName }),
     ]);
-    const failedResponses = getFailedValuesFromSettledPromises(createQueueResponses);
+    const failedResponses =
+      getFailedValuesFromSettledPromises(createQueueResponses);
     if (failedResponses.length > 0) {
       console.error("Unable to create queues: ", failedResponses);
       throw new Error("Unable to create queues");
@@ -175,14 +253,24 @@ async function createQueues({
 
     const createQueueValues =
       getFulfilledValuesFromSettledPromises(createQueueResponses);
-    return createQueueValues;
+
+    const queueUrls = await extractQueueUrls(createQueueValues);
+
+    return {
+      jobQueueUrl: queueUrls[0],
+      jobStatusQueueUrl: queueUrls[1],
+    };
   } catch (e) {
     console.error("Encountered exception while creating queues: ", e);
     throw e;
   }
 }
 
-async function waitForTasksRunning() {
+async function waitForTasksRunning({
+  workerTaskDefinitionArn,
+}: {
+  workerTaskDefinitionArn: string;
+}) {
   let retryCount = MAX_RETRY_COUNT;
   let areAllTasksRunning = false;
 
@@ -402,12 +490,12 @@ async function startWorkerTasks({
   workerRunCommand,
 }: StartWorkerTasksInput) {
   const taskDefinition = await registerTaskDefinition({
-    family: `batch-processor-worker-task-${uniqueId}`,
+    family: `batch-processor-worker-task-${processId}`,
     executionRoleArn: executionRoleArn,
     taskRoleArn: taskRoleArn,
     containerDefinitions: [
       {
-        name: `batch-processor-worker-container-${uniqueId}`,
+        name: `batch-processor-worker-container-${processId}`,
         image: workerImageName,
         memory: 1024,
         cpu: 1024,
@@ -425,10 +513,21 @@ async function startWorkerTasks({
       },
     ],
   });
+
+  if (
+    !taskDefinition.taskDefinition ||
+    !taskDefinition.taskDefinition.taskDefinitionArn
+  ) {
+    throw new Error(
+      "Unable to create worker task definition: " +
+        JSON.stringify(taskDefinition),
+    );
+  }
+
   const createdService = await createService({
     clusterArn,
-    serviceName: `batch-processor-worker-service-${uniqueId}`,
-    taskDefinitionArn: workerTaskDefinitionArn,
+    serviceName: `batch-processor-worker-service-${processId}`,
+    taskDefinitionArn: taskDefinition.taskDefinition?.taskDefinitionArn,
     desiredCount: batchParallelism,
     securityGroups: [securityGroupArn],
     subnets: [subnetArn],
@@ -448,7 +547,7 @@ async function startWorkerTasks({
   //       securityGroupArns: [securityGroupArn],
   //       subnetArns: [subnetArn],
   //       taskDefinitionArn: workerTaskDefinitionArn,
-  //       containerName: `batch-worker-${uniqueId}-${startedTasks.length}`,
+  //       containerName: `batch-worker-${processId}-${startedTasks.length}`,
   //       environment: {
   //         [JOB_QUEUE_URL]: jobQueueUrl,
   //         [JOB_STATUS_QUEUE_URL]: jobStatusQueueUrl,
