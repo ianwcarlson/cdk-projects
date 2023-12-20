@@ -9,7 +9,6 @@ import {
   ECS_SECURITY_GROUP_ARN,
   ECS_SUBNET_ARN,
   ECS_TASK_ROLE_ARN,
-  ORCHESTRATOR_TASK_DEF_ARN,
   REGION,
 } from "../../environment-variables";
 import { ManagedPolicy } from "aws-cdk-lib/aws-iam";

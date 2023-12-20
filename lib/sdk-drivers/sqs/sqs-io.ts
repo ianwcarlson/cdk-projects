@@ -1,6 +1,7 @@
 import {
   CreateQueueCommand,
   DeleteQueueCommand,
+  ListQueuesCommand,
   ReceiveMessageCommand,
   SendMessageBatchCommand,
   SendMessageCommand,
@@ -111,7 +112,7 @@ export async function receiveMessage({
   messageAttributeNames = [],
   maxNumberOfMessages = 1,
   visibilityTimeout = 10,
-  waitTimeSeconds = 30,
+  waitTimeSeconds = 20,
   receiveRequestAttemptId,
 }: ReceiveMessageInput) {
   const input = {
@@ -156,7 +157,33 @@ export async function receiveMessage({
   // };
 }
 
+interface ListQueuesInput {
+  queueNamePrefix?: string;
+}
+
+export async function listQueues({
+  queueNamePrefix = "",
+}: ListQueuesInput) {
+  let nextToken: string | undefined;
+  const queueUrls: string[] = [];
+
+  do {
+    const input = {
+      QueueNamePrefix: queueNamePrefix,
+      NextToken: nextToken,
+    };
+    const command = new ListQueuesCommand(input);
+    const response = await sqsClient.send(command);
+    nextToken = response.NextToken;
+    queueUrls.push(...(response.QueueUrls || []));
+  } while (nextToken);
+
+  return queueUrls;
+}
+
 export async function deleteQueue(queueUrl: string) {
+  console.log("Deleting queue", queueUrl);
+
   const input = {
     QueueUrl: queueUrl,
   };

@@ -4,11 +4,13 @@ import {
   BATCH_PARALLELISM,
   ECS_CLUSTER_ARN,
   ECS_EXECUTION_ROLE_ARN,
+  ECS_GROUP,
   ECS_SECURITY_GROUP_ARN,
   ECS_SUBNET_ARN,
   ECS_TASK_ROLE_ARN,
   JOB_QUEUE_URL,
   JOB_STATUS_QUEUE_URL,
+  LOG_GROUP_NAME,
   ORCHESTRATOR_SERVICE_NAME,
   PROCESS_ID,
   REGION,
@@ -27,6 +29,7 @@ import {
 import {
   createQueue,
   deleteQueue,
+  listQueues,
   receiveMessage,
   sendMessageBatch,
 } from "../lib/sdk-drivers/sqs/sqs-io";
@@ -44,6 +47,7 @@ import { CreateQueueCommandOutput, Message } from "@aws-sdk/client-sqs";
 import { JobMessageBody, JobStatus, JobStatusMessageBody } from "./job-types";
 
 const region = importRegionEnvVar();
+const group = validateEnvVar(ECS_GROUP);
 const clusterArn = validateEnvVar(ECS_CLUSTER_ARN);
 const securityGroupArn = validateEnvVar(ECS_SECURITY_GROUP_ARN);
 const subnetArn = validateEnvVar(ECS_SUBNET_ARN);
@@ -54,10 +58,13 @@ const taskRoleArn = validateEnvVar(ECS_TASK_ROLE_ARN);
 const workerImageName = validateEnvVar(WORKER_IMAGE_NAME);
 const processId = validateEnvVar(PROCESS_ID);
 const orchestratorServiceName = validateEnvVar(ORCHESTRATOR_SERVICE_NAME);
+const logGroupName = validateEnvVar(LOG_GROUP_NAME);
 
 const MAX_RETRY_COUNT = 1000;
 const MAX_READ_STALL_COUNT = 1000;
 const MAX_WORKER_RETRY_COUNT = 2;
+const WorkerMemoryMB = 2048;
+const WorkerCpu = 1024;
 
 interface OrchestratorInput {
   handleGenerateInputData: { (): Promise<Array<string | number>> };
@@ -72,10 +79,12 @@ export async function orchestrator({
   handleJobStatusResponse,
   workerRunCommand,
 }: OrchestratorInput) {
-  let queueUrls: {
-    jobQueueUrl: string;
-    jobStatusQueueUrl: string;
-  } | undefined;
+  let queueUrls:
+    | {
+        jobQueueUrl: string;
+        jobStatusQueueUrl: string;
+      }
+    | undefined;
   let serviceArn: string | undefined;
 
   const inputData = await handleGenerateInputData();
@@ -94,7 +103,10 @@ export async function orchestrator({
   } catch (e) {
     console.error("Encountered exception: ", e);
   } finally {
-    await cleanUp({ queueUrls: [queueUrls?.jobQueueUrl, queueUrls?.jobStatusQueueUrl], workerServiceArn: serviceArn });
+    await cleanUp({
+      queueUrls: [queueUrls?.jobQueueUrl, queueUrls?.jobStatusQueueUrl],
+      workerServiceArn: serviceArn,
+    });
   }
 }
 
@@ -117,15 +129,27 @@ async function setupPipeline(workerRunCommand: string[]) {
 
   const workerTaskDefinitionResponse = await registerTaskDefinition({
     family: `batch-processor-worker-family-${processId}`,
-    executionRoleArn: executionRoleArn,
-    taskRoleArn: taskRoleArn,
+    taskRoleArn,
+    executionRoleArn,
+    networkMode: "awsvpc",
+    requiresCompatibilities: ["FARGATE"],
+    memory: WorkerMemoryMB.toString(),
+    cpu: WorkerCpu.toString(),
     containerDefinitions: [
       {
         name: `batch-processor-worker-container-${processId}`,
         image: workerImageName,
-        memory: 1024,
-        cpu: 1024,
+        memory: WorkerMemoryMB,
+        cpu: WorkerCpu,
         command: workerRunCommand,
+        logConfiguration: {
+          logDriver: "awslogs",
+          options: {
+            "awslogs-group": logGroupName,
+            "awslogs-region": region,
+            "awslogs-stream-prefix": group,
+          },
+        },
         environment: [
           {
             name: JOB_QUEUE_URL,
@@ -210,6 +234,16 @@ async function cleanUp({ queueUrls, workerServiceArn }: QueueTaskArns) {
   }
 
   for (const queueUrl of queueUrls) {
+    if (queueUrl) {
+      await deleteQueue(queueUrl);
+    }
+  }
+
+  // temp
+  const moreQueueUrls = await listQueues({
+    queueNamePrefix: `job-queue`,
+  });
+  for (const queueUrl of moreQueueUrls) {
     if (queueUrl) {
       await deleteQueue(queueUrl);
     }

@@ -7,11 +7,11 @@ import {
   ECS_SECURITY_GROUP_ARN,
   ECS_SUBNET_ARN,
   ECS_TASK_ROLE_ARN,
+  LOG_GROUP_NAME,
   ORCHESTRATOR_SERVICE_NAME,
   PROCESS_ID,
   REGION,
   WORKER_IMAGE_NAME,
-  WORKER_TASK_DEF_ARN,
 } from "../../environment-variables";
 import { validateEnvVar } from "../../utils";
 import {
@@ -31,7 +31,8 @@ const executionRoleArn = validateEnvVar(ECS_EXECUTION_ROLE_ARN);
 const taskRoleArn = validateEnvVar(ECS_TASK_ROLE_ARN);
 const group = validateEnvVar(ECS_GROUP);
 
-const LOG_GROUP_NAME = "/aws/batch-processor";
+const LogGroupName = "/aws/batch-processor";
+const WorkerImageName = "ianwcarlson/batch-processor:latest";
 
 interface InputEvent {
   command?: string[];
@@ -41,17 +42,17 @@ interface InputEvent {
 export const handler = async (event: InputEvent) => {
   console.log("start-batch-processor: event", event);
 
-  console.log(`Creating log group ${LOG_GROUP_NAME}`);
+  console.log(`Creating log group ${LogGroupName}`);
 
   // millisecond precision should be good enough
-  const processId = new Date().toISOString();
+  const processId = new Date().toISOString().replace(/[:.]/g, "-");
   const orchestratorServiceName = `batch-processor-orchestrator-${processId}`;
 
   const logGroups = await describeLogGroups({
-    logGroupNamePattern: LOG_GROUP_NAME,
+    logGroupNamePattern: LogGroupName,
   });
   if (logGroups.logGroups && logGroups.logGroups.length === 0) {
-    await createLogGroup(LOG_GROUP_NAME);
+    await createLogGroup(LogGroupName);
   }
 
   /**
@@ -91,7 +92,7 @@ export const handler = async (event: InputEvent) => {
       containerDefinitions: [
         {
           name: group,
-          image: "ianwcarlson/batch-processor:latest",
+          image: WorkerImageName,
           command,
           entryPoint,
           cpu,
@@ -99,7 +100,7 @@ export const handler = async (event: InputEvent) => {
           logConfiguration: {
             logDriver: "awslogs",
             options: {
-              "awslogs-group": LOG_GROUP_NAME,
+              "awslogs-group": LogGroupName,
               "awslogs-region": region,
               "awslogs-stream-prefix": group,
             },
@@ -108,6 +109,10 @@ export const handler = async (event: InputEvent) => {
             {
               name: REGION,
               value: region,
+            },
+            {
+              name: LOG_GROUP_NAME,
+              value: LogGroupName,
             },
             {
               name: ECS_CLUSTER_ARN,
@@ -124,6 +129,14 @@ export const handler = async (event: InputEvent) => {
             {
               name: ECS_GROUP,
               value: group,
+            },
+            {
+              name: ECS_EXECUTION_ROLE_ARN,
+              value: executionRoleArn,
+            },
+            {
+              name: ECS_TASK_ROLE_ARN,
+              value: taskRoleArn,
             },
             ...environment,
           ],
@@ -157,7 +170,7 @@ export const handler = async (event: InputEvent) => {
       },
       {
         name: WORKER_IMAGE_NAME,
-        value: "ianwcarlson/batch-processor:latest",
+        value: WorkerImageName,
       },
       {
         name: PROCESS_ID,
@@ -166,7 +179,7 @@ export const handler = async (event: InputEvent) => {
       {
         name: ORCHESTRATOR_SERVICE_NAME,
         value: orchestratorServiceName,
-      }
+      },
     ],
   });
 

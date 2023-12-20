@@ -365,6 +365,7 @@ export async function deleteService({
   clusterArn,
 }: DeleteServiceInput) {
   console.log("Deleting service " + serviceArn);
+
   const input = {
     service: serviceArn,
     cluster: clusterArn,
@@ -379,9 +380,7 @@ interface ListServicesInput {
   serviceName?: string;
 }
 
-export async function listServices({
-  clusterArn,
-}: ListServicesInput) {
+export async function listServices({ clusterArn }: ListServicesInput) {
   const input = {
     cluster: clusterArn,
   };

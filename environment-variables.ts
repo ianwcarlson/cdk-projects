@@ -4,6 +4,7 @@ export const REGION = "REGION";
 
 export const INSTANCE_ID = "INSTANCE_ID";
 
+export const LOG_GROUP_NAME = "LOG_GROUP_NAME";
 export const ECS_CLUSTER_ARN = "ECS_CLUSTER_ARN";
 export const ECS_GROUP = "ECS_GROUP";
 export const ECS_SECURITY_GROUP_ARN = "ECS_SECURITY_GROUP_ARN";

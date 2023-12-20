@@ -178,7 +178,13 @@ export class FargateBaseStack extends NestedStack {
               effect: Effect.ALLOW,
             }),
             new PolicyStatement({
-              actions: ["sqs:CreateQueue"],
+              actions: [
+                "sqs:CreateQueue",
+                "sqs:SendMessage",
+                "sqs:DeleteQueue",
+                "sqs:ReceiveMessage",
+                "sqs:ListQueues",
+              ],
               resources: ["*"],
               effect: Effect.ALLOW,
             }),
