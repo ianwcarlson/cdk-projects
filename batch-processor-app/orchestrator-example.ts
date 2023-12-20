@@ -4,7 +4,9 @@ async function fetchInputData() {
   return [1, 2, 3];
 }
 
+console.log("orchestrator-example: starting");
+
 orchestrator({
   handleGenerateInputData: fetchInputData,
-  workerRunCommand: ["node", "--enable-source-maps", "dist/worker-example.js"],
+  workerRunCommand: ["node worker-example.js"],
 }).then();

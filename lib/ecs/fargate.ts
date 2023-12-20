@@ -8,6 +8,7 @@ import { FargateProps } from "../../cdk-types";
 import {
   ECS_CLUSTER_ARN,
   ECS_EXECUTION_ROLE_ARN,
+  ECS_GROUP,
   ECS_SECURITY_GROUP_ARN,
   ECS_SUBNET_ARN,
   ECS_TASK_ROLE_ARN,
@@ -22,7 +23,9 @@ import {
   ContainerImage,
   FargateService,
   FargateTaskDefinition,
+  OperatingSystemFamily,
 } from "aws-cdk-lib/aws-ecs";
+import { Architecture } from "aws-cdk-lib/aws-lambda";
 
 const instanceId = validateEnvVar(INSTANCE_ID);
 
@@ -48,14 +51,18 @@ interface FargateServiceConfigInterface {
   secrets?: {
     [key: string]: aws_ecs.Secret;
   };
+  runtimePlatform?: {
+    operatingSystemFamily: OperatingSystemFamily;
+    cpuArchitecture: Architecture;
+  };
 }
 
 export class FargateStack extends NestedStack {
   private dockerHubSecret: ISecret;
   private cluster: aws_ecs.Cluster;
   private contextId: string;
-  private fargateExecutionRole: Role;
-  private fargateTaskRole: Role;
+  public fargateExecutionRole: Role;
+  public fargateTaskRole: Role;
   private noIngressSecurityGroup: SecurityGroup;
   private publicSubnet: ISubnet;
   public region: string;
@@ -95,7 +102,7 @@ export class FargateStack extends NestedStack {
       MemoryMB: 2048,
       // Run the scanner inside a running ecs task. We don't really know how long the scan
       // will take, so we can't use lambda.
-      Command: [`bash run-batch-processor-ochestration.sh`],
+      Command: ["node orchestrator-example.js"],
       EntryPoint: ["sh", "-c"],
       // We only run this on-demand
       DesiredCount: 0,
@@ -104,6 +111,7 @@ export class FargateStack extends NestedStack {
       environment: {
         [WORKER_IMAGE_NAME]: workerImageName,
       },
+
       secrets: {
         // GENERIC_API_TOKEN: aws_ecs.Secret.fromSecretsManager(
         //   this.genericApiToken,
@@ -114,7 +122,9 @@ export class FargateStack extends NestedStack {
 
     // Worker task definition is created dynamically in the orchestrator task
 
-    const { taskDefinition } = this.instantiateFargateService({ params: Orchestrator });
+    const { taskDefinition } = this.instantiateFargateService({
+      params: Orchestrator,
+    });
     this.orchestratorTaskDefinition = taskDefinition;
     this.batchProcessorEcsGroup = Orchestrator.ServicePrefixId;
   }
@@ -206,6 +216,7 @@ export class FargateStack extends NestedStack {
         [ECS_SUBNET_ARN]: this.publicSubnet.subnetId,
         [ECS_TASK_ROLE_ARN]: this.fargateTaskRole.roleArn,
         [ECS_EXECUTION_ROLE_ARN]: this.fargateExecutionRole.roleArn,
+        [ECS_GROUP]: params.ServicePrefixId,
 
         ...params.environment,
       },

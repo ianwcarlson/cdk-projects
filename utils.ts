@@ -90,7 +90,10 @@ export function getFulfilledValuesFromSettledPromises<T>(
 export function getFailedValuesFromSettledPromises<T>(
   results: PromiseSettledResult<T>[],
 ) {
-  return results.map((result, idx) => {
-    return result.status === "rejected" ? idx : null;
-  });
+  return results.reduce((acc: PromiseRejectedResult[], result) => {
+    if (result.status === "rejected") {
+      acc.push(result);
+    }
+    return acc;
+  }, []);
 }

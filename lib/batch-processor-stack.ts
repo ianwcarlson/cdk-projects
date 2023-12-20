@@ -34,9 +34,9 @@ export class BatchProcessorStack extends cdk.Stack {
     });
 
     const selection = vpc.selectSubnets({
-      subnetType: SubnetType.PUBLIC
+      subnetType: SubnetType.PUBLIC,
     });
-  
+
     const fargateBase = new FargateBaseStack(
       this,
       `fargate-base-stack-${instanceId}`,
@@ -75,8 +75,9 @@ export class BatchProcessorStack extends cdk.Stack {
         cluster: fargateBase.cluster,
         noIngressSecurityGroup: fargateBase.noIngressSecurityGroup,
         publicSubnet: selection.subnets[0],
-        orchestratorTaskDefinition: fargateStack.orchestratorTaskDefinition,
         batchProcessorEcsGroup: fargateStack.batchProcessorEcsGroup,
+        executionRoleArn: fargateStack.fargateExecutionRole.roleArn,
+        taskRoleArn: fargateStack.fargateTaskRole.roleArn,
       },
     );
   }

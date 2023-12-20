@@ -4,9 +4,11 @@ import { RetentionDays } from "aws-cdk-lib/aws-logs";
 import { Construct } from "constructs";
 import {
   ECS_CLUSTER_ARN,
+  ECS_EXECUTION_ROLE_ARN,
   ECS_GROUP,
   ECS_SECURITY_GROUP_ARN,
   ECS_SUBNET_ARN,
+  ECS_TASK_ROLE_ARN,
   ORCHESTRATOR_TASK_DEF_ARN,
   REGION,
 } from "../../environment-variables";
@@ -85,6 +87,7 @@ export class BatchProcessorLambdaTop extends NestedStack {
               "scheduler:CreateSchedule",
               "logs:PutSubscriptionFilter",
               "logs:PutRetentionPolicy",
+              "logs:DescribeLogGroups",
               "sqs:sendmessage",
               "kms:Encrypt",
               "kms:Decrypt",
@@ -96,6 +99,8 @@ export class BatchProcessorLambdaTop extends NestedStack {
               "ecs:DescribeContainerInstances",
               "ecs:DescribeTaskDefinition",
               "ecs:ListTaskDefinitions",
+              "ecs:CreateService",
+              "ecs:RegisterTaskDefinition",
             ],
             principals: [],
             resources: [`*`],
@@ -165,7 +170,8 @@ export class BatchProcessorLambdaTop extends NestedStack {
         [ECS_CLUSTER_ARN]: props.cluster.clusterArn,
         [ECS_SECURITY_GROUP_ARN]: props.noIngressSecurityGroup.securityGroupId,
         [ECS_SUBNET_ARN]: props.publicSubnet.subnetId,
-        [ORCHESTRATOR_TASK_DEF_ARN]: props.orchestratorTaskDefinition.taskDefinitionArn,
+        [ECS_TASK_ROLE_ARN]: props.taskRoleArn,
+        [ECS_EXECUTION_ROLE_ARN]: props.taskRoleArn,
         [ECS_GROUP]: props.batchProcessorEcsGroup,
       },
     });

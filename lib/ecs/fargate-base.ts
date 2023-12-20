@@ -168,6 +168,16 @@ export class FargateBaseStack extends NestedStack {
               resources: ["*"],
               effect: Effect.ALLOW,
             }),
+            new PolicyStatement({
+              actions: ["logs:CreateLogStream", "logs:DescribeLogGroups", "logs:PutLogEvents"],
+              resources: ["*"],
+              effect: Effect.ALLOW,
+            }),
+            new PolicyStatement({
+              actions: ["sqs:CreateQueue"],
+              resources: ["*"],
+              effect: Effect.ALLOW,
+            }),
           ],
         }),
       },

@@ -12,6 +12,7 @@ import {
   RegisterTaskDefinitionCommand,
   CreateServiceCommand,
   DeregisterTaskDefinitionCommand,
+  RegisterTaskDefinitionCommandInput,
 } from "@aws-sdk/client-ecs";
 import { importRegionEnvVar, sleep } from "../../../utils";
 import { DeleteQueueCommand } from "@aws-sdk/client-sqs";
@@ -290,35 +291,9 @@ export async function findEcsClusterArn(clusterName: string) {
   return foundCluster;
 }
 
-interface RegisterTaskDefinitionInput {
-  family: string;
-  taskRoleArn: string;
-  executionRoleArn: string;
-  containerDefinitions: Array<{
-    name: string;
-    image: string;
-    environment: Array<{ name: string; value: string }>;
-    command?: Array<string>;
-    cpu: number;
-    memory: number;
-  }>;
-  ephemeralStorage?: {
-    sizeInGiB: number;
-  };
-  runtimePlatform?: {
-    cpuArchitecture: string;
-    operatingSystem: string;
-  };
-}
-
-export async function registerTaskDefinition({
-  family,
-  containerDefinitions,
-}: RegisterTaskDefinitionInput) {
-  const input = {
-    family,
-    containerDefinitions,
-  };
+export async function registerTaskDefinition(
+  input: RegisterTaskDefinitionCommandInput,
+) {
   const command = new RegisterTaskDefinitionCommand(input);
   return await ecsClient.send(command);
 }
@@ -345,6 +320,7 @@ interface CreateServiceInput {
   securityGroups: Array<string>;
   subnets: Array<string>;
   healthCheckGracePeriodSeconds?: number;
+  assignPublicIp?: AssignPublicIp;
 }
 
 export async function createService({
@@ -353,24 +329,23 @@ export async function createService({
   taskDefinitionArn,
   desiredCount,
   launchType = LaunchType.FARGATE,
+  assignPublicIp = AssignPublicIp.DISABLED,
   securityGroups,
   subnets,
-  healthCheckGracePeriodSeconds = 90,
 }: CreateServiceInput) {
   const input = {
     cluster: clusterArn,
     serviceName,
     taskDefinition: taskDefinitionArn,
     desiredCount,
-    LaunchType: launchType,
+    launchType,
     networkConfiguration: {
       awsvpcConfiguration: {
-        assignPublicIp: AssignPublicIp.DISABLED,
         securityGroups,
         subnets,
+        assignPublicIp,
       },
     },
-    healthCheckGracePeriodSeconds,
   };
   const command = new CreateServiceCommand(input);
   return await ecsClient.send(command);

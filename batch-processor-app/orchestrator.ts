@@ -4,7 +4,6 @@ import {
   BATCH_PARALLELISM,
   ECS_CLUSTER_ARN,
   ECS_EXECUTION_ROLE_ARN,
-  ECS_GROUP,
   ECS_SECURITY_GROUP_ARN,
   ECS_SUBNET_ARN,
   ECS_TASK_ROLE_ARN,
@@ -28,19 +27,19 @@ import {
 } from "../lib/sdk-drivers/sqs/sqs-io";
 import {
   didAnySettledPromisesFail,
+  getFailedValuesFromSettledPromises,
   getFulfilledValuesFromSettledPromises,
   groupArray,
   importRegionEnvVar,
   sleep,
   validateEnvVar,
 } from "../utils";
-import { RunTaskCommandOutput } from "@aws-sdk/client-ecs";
+import { AssignPublicIp, RunTaskCommandOutput } from "@aws-sdk/client-ecs";
 import { CreateQueueCommandOutput, Message } from "@aws-sdk/client-sqs";
 import { JobMessageBody, JobStatus, JobStatusMessageBody } from "./job-types";
 
 const region = importRegionEnvVar();
 const clusterArn = validateEnvVar(ECS_CLUSTER_ARN);
-const group = validateEnvVar(ECS_GROUP);
 const securityGroupArn = validateEnvVar(ECS_SECURITY_GROUP_ARN);
 const subnetArn = validateEnvVar(ECS_SUBNET_ARN);
 const workerTaskDefinitionArn = validateEnvVar(WORKER_TASK_DEF_ARN);
@@ -112,13 +111,24 @@ async function setupPipeline(workerRunCommand: string[]) {
 
   const queueUrls = await extractQueueUrls(createQueueValues);
 
-  console.log("Starting worker tasks");
-  const startedTasks = await startWorkerTasks({
-    uniqueId,
-    jobQueueUrl: queueUrls[0],
-    jobStatusQueueUrl: queueUrls[1],
-    workerRunCommand,
+  console.log("Creating worker service");
+
+  const createdService = await createService({
+    clusterArn,
+    serviceName: `batch-processor-worker-service-${uniqueId}`,
+    taskDefinitionArn: workerTaskDefinitionArn,
+    desiredCount: batchParallelism,
+    securityGroups: [securityGroupArn],
+    subnets: [subnetArn],
+    assignPublicIp: AssignPublicIp.ENABLED,
   });
+
+  // const startedTasks = await startWorkerTasks({
+  //   uniqueId,
+  //   jobQueueUrl: queueUrls[0],
+  //   jobStatusQueueUrl: queueUrls[1],
+  //   workerRunCommand,
+  // });
 
   // const taskArns = await extractTaskArns(startedTasks);
 
@@ -155,7 +165,9 @@ async function createQueues({
       createQueue({ queueName: jobQueueName }),
       createQueue({ queueName: jobStatusQueueName }),
     ]);
-    if (didAnySettledPromisesFail(createQueueResponses)) {
+    const failedResponses = getFailedValuesFromSettledPromises(createQueueResponses);
+    if (failedResponses.length > 0) {
+      console.error("Unable to create queues: ", failedResponses);
       throw new Error("Unable to create queues");
     }
 
@@ -420,6 +432,7 @@ async function startWorkerTasks({
     desiredCount: batchParallelism,
     securityGroups: [securityGroupArn],
     subnets: [subnetArn],
+    assignPublicIp: AssignPublicIp.ENABLED,
   });
   // Create fargate service with desired count = batchParallelism
 

@@ -30,6 +30,7 @@ export interface BatchProcessorLambdaTopProps extends NestedStackProps {
   cluster: Cluster;
   noIngressSecurityGroup: SecurityGroup;
   publicSubnet: ISubnet;
-  orchestratorTaskDefinition: FargateTaskDefinition;
   batchProcessorEcsGroup: string;
+  executionRoleArn: string;
+  taskRoleArn: string;
 }

@@ -5,9 +5,9 @@
     "cdk-top": "bin/cdk-top.ts"
   },
   "scripts": {
-    "build": "esbuild ./batch-processor-app/orchestrator-example.ts ./batch-processor-app/worker-example.ts --sourcemap --bundle --platform=node --outdir=./docker-build/batch-processor-app/",
+    "build": "esbuild ./batch-processor-app/orchestrator-example.ts ./batch-processor-app/worker-example.ts --sourcemap --bundle --platform=node --outdir=./docker/batch-processor-app/",
     "build-docker": "cd docker && bash ./build.sh",
-    "publish-docker": "npm run build && cd docker && bash ./build.sh && bash ./publish.sh",
+    "publish-docker": "rm -r docker/batch-processor-app && npm run build && cd docker && bash ./build.sh && bash ./publish.sh",
     "watch": "tsc -w",
     "test": "jest",
     "cdk": "cdk",
@@ -32,6 +32,7 @@
     "typescript": "~5.2.2"
   },
   "dependencies": {
+    "@aws-sdk/client-cloudwatch-logs": "^3.474.0",
     "@aws-sdk/client-ecs": "^3.470.0",
     "@aws-sdk/client-sqs": "^3.470.0",
     "aws-cdk-lib": "2.114.1",
