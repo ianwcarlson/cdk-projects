@@ -157,8 +157,8 @@ export const handler = async (event: InputEvent) => {
 
   const orchestratorTaskDefinitionResponse = await createTaskDefinition({
     command: ["node orchestrator-example.js"],
-    cpu: 1024,
-    memory: 2048,
+    cpu: 256,
+    memory: 512,
     environment: [
       // {
       //   name: WORKER_TASK_DEF_ARN,

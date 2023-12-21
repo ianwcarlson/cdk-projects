@@ -63,8 +63,8 @@ const logGroupName = validateEnvVar(LOG_GROUP_NAME);
 const MAX_RETRY_COUNT = 1000;
 const MAX_READ_STALL_COUNT = 1000;
 const MAX_WORKER_RETRY_COUNT = 2;
-const WorkerMemoryMB = 2048;
-const WorkerCpu = 1024;
+const WorkerMemoryMB = 512;
+const WorkerCpu = 256;
 
 interface OrchestratorInput {
   handleGenerateInputData: { (): Promise<Array<string | number>> };
