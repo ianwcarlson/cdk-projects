@@ -1,5 +1,6 @@
 import {
   CreateQueueCommand,
+  DeleteMessageBatchCommand,
   DeleteQueueCommand,
   ListQueuesCommand,
   ReceiveMessageCommand,
@@ -124,7 +125,21 @@ export async function receiveMessage({
   };
   const command = new ReceiveMessageCommand(input);
   const response = await sqsClient.send(command);
-  return response;
+
+  const acknowledgeMessageReceived = async () => {
+    if (response.Messages) {
+      return deleteMessageBatch({
+        queueUrl,
+        entries: response.Messages.map((m) => ({
+          id: m.MessageId || "",
+          receiptHandle: m.ReceiptHandle || "",
+        })),
+      });
+    }
+    return null;
+  };
+
+  return { response, acknowledgeMessageReceived };
   // { // ReceiveMessageResult
   //   Messages: [ // MessageList
   //     { // Message
@@ -154,13 +169,27 @@ export async function receiveMessage({
   // };
 }
 
-interface ListQueuesInput {
-  queueNamePrefix?: string;
+interface DeleteMessageBatchInput {
+  queueUrl: string;
+  entries: Array<{
+    id: string;
+    receiptHandle: string;
+  }>;
 }
 
-export async function listQueues({
-  queueNamePrefix = "",
-}: ListQueuesInput) {
+export async function deleteMessageBatch({
+  queueUrl,
+  entries,
+}: DeleteMessageBatchInput) {
+  const input = {
+    QueueUrl: queueUrl,
+    Entries: entries.map((e) => ({ Id: e.id, ReceiptHandle: e.receiptHandle })),
+  };
+  const command = new DeleteMessageBatchCommand(input);
+  return sqsClient.send(command);
+}
+
+export async function listQueues(queueNamePrefix: string = "") {
   let nextToken: string | undefined;
   const queueUrls: string[] = [];
 
@@ -176,7 +205,7 @@ export async function listQueues({
     console.log("queueUrls", queueUrls);
   } while (nextToken);
 
-  return queueUrls;
+  return queueUrls.filter((url) => url.includes(queueNamePrefix));
 }
 
 export async function deleteQueue(queueUrl: string) {

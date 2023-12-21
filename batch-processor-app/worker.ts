@@ -26,7 +26,7 @@ export async function workerProcessInput({
   let timeOutCount = MAX_IDLE_COUNT;
 
   while (timeOutCount > 0) {
-    const message = await receiveMessage({
+    const { response: message, acknowledgeMessageReceived } = await receiveMessage({
       queueUrl: jobQueueUrl,
       maxNumberOfMessages: 1,
       waitTimeSeconds: 10,
@@ -38,12 +38,18 @@ export async function workerProcessInput({
         message.Messages[0].Body || "",
       );
       const jobStatusMessage = await handleProcessMessage(payload);
-      await sendMessageBatch({
+
+      await acknowledgeMessageReceived();
+
+      console.log("Worker sending job status message", jobStatusMessage);
+
+      const response = await sendMessageBatch({
         queueUrl: jobStatusQueueUrl,
         messages: [
           { messageBody: JSON.stringify(jobStatusMessage), id: nanoid() },
         ],
       });
+      console.log("Sent message: " + JSON.stringify(response));
     } else {
       timeOutCount -= 1;
     }

@@ -45,6 +45,7 @@ import {
 import { AssignPublicIp, RunTaskCommandOutput } from "@aws-sdk/client-ecs";
 import { CreateQueueCommandOutput, Message } from "@aws-sdk/client-sqs";
 import { JobMessageBody, JobStatus, JobStatusMessageBody } from "./job-types";
+import { read } from "fs";
 
 const region = importRegionEnvVar();
 const group = validateEnvVar(ECS_GROUP);
@@ -61,10 +62,10 @@ const orchestratorServiceName = validateEnvVar(ORCHESTRATOR_SERVICE_NAME);
 const logGroupName = validateEnvVar(LOG_GROUP_NAME);
 
 const MAX_RETRY_COUNT = 1000;
-const MAX_READ_STALL_COUNT = 1000;
+const MAX_READ_STALL_COUNT = 10;
 const MAX_WORKER_RETRY_COUNT = 2;
-const WorkerMemoryMB = 512;
-const WorkerCpu = 256;
+const WorkerMemoryMB = 1024;
+const WorkerCpu = 512;
 
 interface OrchestratorInput {
   handleGenerateInputData: { (): Promise<Array<string | number>> };
@@ -227,6 +228,7 @@ interface QueueTaskArns {
 }
 
 async function cleanUp({ queueUrls, workerServiceArn }: QueueTaskArns) {
+  console.log("Cleaning up");
   if (workerServiceArn) {
     await deleteService({
       serviceArn: workerServiceArn,
@@ -241,9 +243,7 @@ async function cleanUp({ queueUrls, workerServiceArn }: QueueTaskArns) {
   }
 
   // temp
-  const moreQueueUrls = await listQueues({
-    queueNamePrefix: `job-queue`,
-  });
+  const moreQueueUrls = await listQueues(`job-`);
   for (const queueUrl of moreQueueUrls) {
     if (queueUrl) {
       await deleteQueue(queueUrl);
@@ -277,6 +277,7 @@ async function createQueues({
       createQueue({ queueName: jobQueueName }),
       createQueue({ queueName: jobStatusQueueName }),
     ]);
+    console.log("createQueueResponses: ", JSON.stringify(createQueueResponses));
     const failedResponses =
       getFailedValuesFromSettledPromises(createQueueResponses);
     if (failedResponses.length > 0) {
@@ -387,7 +388,7 @@ async function writeBatches({
   const currentTime = new Date();
   let writeBatchIdx = 0;
   let readBatchIdx = 0;
-  const readStallCounter = MAX_READ_STALL_COUNT;
+  let readStallCounter = MAX_READ_STALL_COUNT;
   const workerPool: Map<
     number,
     { currentTime: Date; taskIds: (string | number)[]; retries: number }
@@ -395,9 +396,14 @@ async function writeBatches({
   const batchParallelism = 6;
   const groupedInputData = groupArray(inputData, 10);
   const numBatches = groupedInputData.length;
+  console.log("numBatches: ", numBatches);
 
   while (readBatchIdx < numBatches && readStallCounter > 0) {
-    if (workerPool.size < batchParallelism && writeBatchIdx < numBatches) {
+    readStallCounter -= 1;
+    console.log("readStallCounter: ", readStallCounter);
+    console.log("readBatchIdx: ", readBatchIdx);
+    console.log("writeBatchIdx: ", writeBatchIdx);
+    if (workerPool.size < batchParallelism && readBatchIdx < numBatches) {
       const numBatchesRemaining = numBatches - writeBatchIdx;
       const numBatchesToAdd = batchParallelism - workerPool.size;
       const numBatchesToAddActual = Math.min(
@@ -422,6 +428,9 @@ async function writeBatches({
         });
       });
       await Promise.allSettled(writeBatchPromises);
+
+      console.log("sent messages");
+
       // const failed = responses.filter((response, idx, promiseSettledResult) => {
       //   console.log({ promiseSettledResult });
       //   return response.status === "rejected";
@@ -431,10 +440,16 @@ async function writeBatches({
         queueUrl: workerStatusQueueUrl,
       });
 
+      console.log("messages: " + JSON.stringify(messages));
+
       for (const message of messages) {
         const { batchIndex, status } = message;
+        console.log("batchIndex: ", batchIndex);
+        console.log("status: ", status);
+        console.log("workerPool: ", JSON.stringify(workerPool));
         const worker = workerPool.get(batchIndex);
         if (worker) {
+          readBatchIdx = +1;
           workerPool.delete(batchIndex);
           if (status === JobStatus.FAILURE) {
             if (worker.retries < MAX_WORKER_RETRY_COUNT) {
@@ -451,10 +466,12 @@ async function writeBatches({
           console.error("Worker pool: ", workerPool);
         }
       }
+      console.log("handleJobStatusResponse: " + handleJobStatusResponse);
       if (handleJobStatusResponse) {
         await handleJobStatusResponse(messages);
       }
     }
+    console.log("Donzo");
   }
 }
 
@@ -488,15 +505,21 @@ interface ReadFromWorkerStatusQueueInput {
 async function readFromWorkerStatusQueue({
   queueUrl,
 }: ReadFromWorkerStatusQueueInput) {
-  let message;
   let messages: Message[] = [];
+  let retryCount = MAX_RETRY_COUNT;
 
   do {
-    message = await receiveMessage({ queueUrl });
+    const { response: message, acknowledgeMessageReceived } =
+      await receiveMessage({ queueUrl });
+    // console.log("message: ", JSON.stringify(message));
     if (message && message.Messages) {
       messages = messages.concat(message.Messages);
+      await acknowledgeMessageReceived();
+      retryCount -= 1;
+    } else {
+      break;
     }
-  } while (message);
+  } while (retryCount > 0);
 
   const messageBodies = messages.reduce(
     (acc: JobStatusMessageBody[], m: Message) => {

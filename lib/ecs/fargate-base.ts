@@ -184,6 +184,7 @@ export class FargateBaseStack extends NestedStack {
                 "sqs:DeleteQueue",
                 "sqs:ReceiveMessage",
                 "sqs:ListQueues",
+                "sqs:DeleteMessage",
               ],
               resources: ["*"],
               effect: Effect.ALLOW,
