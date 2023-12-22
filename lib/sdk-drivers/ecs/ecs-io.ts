@@ -289,8 +289,6 @@ export async function findEcsClusterArn(clusterName: string) {
     const errorMessage = `Unable to find cluster: ${clusterName}`;
     console.error(errorMessage);
     throw new Error(errorMessage);
-  } else {
-    console.log("Found cluster " + foundCluster.clusterName);
   }
   return foundCluster;
 }
@@ -391,7 +389,7 @@ export async function listServices({ clusterArn }: ListServicesInput) {
     const command = new ListServicesCommand(input);
     const response = await ecsClient.send(command);
     if (response.serviceArns) {
-      console.log("Found services: " + response.serviceArns.join(", "));
+      // console.log("Found services: " + response.serviceArns.join(", "));
       services.push(...response.serviceArns);
     }
 
@@ -439,7 +437,7 @@ export async function findServiceByName({
       (s) => s.serviceName === serviceName,
     );
     if (foundService) {
-      console.log("Found service " + foundService.serviceName);
+      // console.log("Found service " + foundService.serviceName);
       return foundService;
     }
   }

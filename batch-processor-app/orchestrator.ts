@@ -22,9 +22,7 @@ import {
   deleteService,
   findServiceByName,
   getTaskState,
-  listServices,
   registerTaskDefinition,
-  stopTask,
 } from "../lib/sdk-drivers/ecs/ecs-io";
 import {
   createQueue,
@@ -34,7 +32,6 @@ import {
   sendMessageBatch,
 } from "../lib/sdk-drivers/sqs/sqs-io";
 import {
-  didAnySettledPromisesFail,
   getFailedValuesFromSettledPromises,
   getFulfilledValuesFromSettledPromises,
   groupArray,
@@ -45,7 +42,7 @@ import {
 import { AssignPublicIp, RunTaskCommandOutput } from "@aws-sdk/client-ecs";
 import { CreateQueueCommandOutput, Message } from "@aws-sdk/client-sqs";
 import { JobMessageBody, JobStatus, JobStatusMessageBody } from "./job-types";
-import { read } from "fs";
+import { PutLogEvents, createLogStream } from "../lib/sdk-drivers/cloudwatch/cloudwatch-io";
 
 const region = importRegionEnvVar();
 const group = validateEnvVar(ECS_GROUP);
@@ -67,6 +64,17 @@ const MAX_WORKER_RETRY_COUNT = 2;
 const WorkerMemoryMB = 1024;
 const WorkerCpu = 512;
 
+const LogGroupName = "/aws/batch-processor";
+const LogStreamName = `orchestrator-${processId}`;
+
+async function logEvent(message: string) {
+  await PutLogEvents({
+    logGroupName: LogGroupName,
+    logStreamName: LogStreamName,
+    logMessages: [message],
+  });
+}
+
 interface OrchestratorInput {
   handleGenerateInputData: { (): Promise<Array<string | number>> };
   handleJobStatusResponse?: {
@@ -80,6 +88,11 @@ export async function orchestrator({
   handleJobStatusResponse,
   workerRunCommand,
 }: OrchestratorInput) {
+  await createLogStream({
+    logGroupName: LogGroupName,
+    logStreamName: LogStreamName,
+  });
+
   let queueUrls:
     | {
         jobQueueUrl: string;
@@ -93,6 +106,8 @@ export async function orchestrator({
     const services = await setupPipeline(workerRunCommand);
     queueUrls = services.queueUrls;
     serviceArn = services.workerServiceArn;
+
+    await sleep(10000);
 
     await writeBatches({
       inputData,
@@ -149,7 +164,7 @@ async function setupPipeline(workerRunCommand: string[]) {
           options: {
             "awslogs-group": logGroupName,
             "awslogs-region": region,
-            "awslogs-stream-prefix": group,
+            "awslogs-stream-prefix": "worker",
           },
         },
         environment: [
@@ -177,6 +192,10 @@ async function setupPipeline(workerRunCommand: string[]) {
             name: ECS_SUBNET_ARN,
             value: subnetArn,
           },
+          {
+            name: PROCESS_ID,
+            value: processId,
+          }
         ],
       },
     ],
@@ -192,7 +211,7 @@ async function setupPipeline(workerRunCommand: string[]) {
     );
   }
 
-  console.log("Creating worker service");
+  await logEvent("Creating worker service");
 
   const createdService = await createService({
     clusterArn,
@@ -228,13 +247,15 @@ interface QueueTaskArns {
 }
 
 async function cleanUp({ queueUrls, workerServiceArn }: QueueTaskArns) {
-  console.log("Cleaning up");
+  await logEvent("Cleaning up");
   if (workerServiceArn) {
     await deleteService({
       serviceArn: workerServiceArn,
       clusterArn,
     });
   }
+
+  await sleep(10000);
 
   for (const queueUrl of queueUrls) {
     if (queueUrl) {
@@ -243,7 +264,7 @@ async function cleanUp({ queueUrls, workerServiceArn }: QueueTaskArns) {
   }
 
   // temp
-  const moreQueueUrls = await listQueues(`job-`);
+  const moreQueueUrls = await listQueues("job-");
   for (const queueUrl of moreQueueUrls) {
     if (queueUrl) {
       await deleteQueue(queueUrl);
@@ -284,8 +305,6 @@ async function createQueues({
       console.error("Unable to create queues: ", failedResponses);
       throw new Error("Unable to create queues");
     }
-
-    console.log("Queues created");
 
     const createQueueValues =
       getFulfilledValuesFromSettledPromises(createQueueResponses);
@@ -396,13 +415,13 @@ async function writeBatches({
   const batchParallelism = 6;
   const groupedInputData = groupArray(inputData, 10);
   const numBatches = groupedInputData.length;
-  console.log("numBatches: ", numBatches);
+  await logEvent("numBatches: " + numBatches);
 
   while (readBatchIdx < numBatches && readStallCounter > 0) {
     readStallCounter -= 1;
-    console.log("readStallCounter: ", readStallCounter);
-    console.log("readBatchIdx: ", readBatchIdx);
-    console.log("writeBatchIdx: ", writeBatchIdx);
+    await logEvent("readStallCounter: " + readStallCounter);
+    await logEvent("readBatchIdx: " + readBatchIdx);
+    await logEvent("writeBatchIdx: " + writeBatchIdx);
     if (workerPool.size < batchParallelism && readBatchIdx < numBatches) {
       const numBatchesRemaining = numBatches - writeBatchIdx;
       const numBatchesToAdd = batchParallelism - workerPool.size;
@@ -416,6 +435,7 @@ async function writeBatches({
         const taskIds = groupedInputData[i];
         batchIndices.push(writeBatchIdx);
         workerPool.set(writeBatchIdx, { currentTime, taskIds, retries: 0 });
+        console.log("workerPool yo: ", workerPool.entries());
         writeBatchIdx += 1;
       }
 
@@ -429,8 +449,6 @@ async function writeBatches({
       });
       await Promise.allSettled(writeBatchPromises);
 
-      console.log("sent messages");
-
       // const failed = responses.filter((response, idx, promiseSettledResult) => {
       //   console.log({ promiseSettledResult });
       //   return response.status === "rejected";
@@ -440,7 +458,7 @@ async function writeBatches({
         queueUrl: workerStatusQueueUrl,
       });
 
-      console.log("messages: " + JSON.stringify(messages));
+      // console.log("messages: " + JSON.stringify(messages));
 
       for (const message of messages) {
         const { batchIndex, status } = message;
@@ -466,12 +484,12 @@ async function writeBatches({
           console.error("Worker pool: ", workerPool);
         }
       }
-      console.log("handleJobStatusResponse: " + handleJobStatusResponse);
+      // console.log("handleJobStatusResponse: " + handleJobStatusResponse);
       if (handleJobStatusResponse) {
         await handleJobStatusResponse(messages);
       }
     }
-    console.log("Donzo");
+    // console.log("Donzo");
   }
 }
 

@@ -102,7 +102,7 @@ export const handler = async (event: InputEvent) => {
             options: {
               "awslogs-group": LogGroupName,
               "awslogs-region": region,
-              "awslogs-stream-prefix": group,
+              "awslogs-stream-prefix": "orchestrator",
             },
           },
           environment: [
