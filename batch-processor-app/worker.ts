@@ -6,7 +6,8 @@ import {
 } from "../lib/sdk-drivers/sqs/sqs-io";
 import { validateEnvVar } from "../utils";
 import { JobMessageBody, JobStatusMessageBody } from "./job-types";
-import { PutLogEvents, createLogStream } from "../lib/sdk-drivers/cloudwatch/cloudwatch-io";
+import { putLogEvents, createLogStream } from "../lib/sdk-drivers/cloudwatch/cloudwatch-io";
+import { LogBuffer } from "./log-buffer";
 
 const MAX_IDLE_COUNT = 1000;
 
@@ -17,13 +18,7 @@ const processId = validateEnvVar(PROCESS_ID);
 const LogGroupName = "/aws/batch-processor";
 const LogStreamName = `worker-${processId}`;
 
-async function logEvent(message: string) {
-  await PutLogEvents({
-    logGroupName: LogGroupName,
-    logStreamName: LogStreamName,
-    logMessages: [message],
-  });
-}
+const log = new LogBuffer();
 
 interface WorkerProcessInput {
   handleProcessMessage: (
@@ -39,7 +34,7 @@ export async function workerProcessInput({
     logStreamName: LogStreamName,
   });
   
-  await logEvent("Worker starting");
+  log.log("Worker starting");
 
   let timeOutCount = MAX_IDLE_COUNT;
 
@@ -60,7 +55,7 @@ export async function workerProcessInput({
 
       await acknowledgeMessageReceived();
 
-      await logEvent("Worker sending job status message" + jobStatusMessage);
+      log.log("Worker sending job status message" + jobStatusMessage);
 
       const response = await sendMessageBatch({
         queueUrl: jobStatusQueueUrl,
@@ -75,8 +70,8 @@ export async function workerProcessInput({
   }
 
   if (timeOutCount === 0) {
-    console.log("Worker timed out");
+    log.log("Worker timed out");
   }
 
-  console.log("Worker stopping");
+  log.log("Worker stopping");
 }

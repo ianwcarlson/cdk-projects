@@ -42,7 +42,7 @@ import {
 import { AssignPublicIp, RunTaskCommandOutput } from "@aws-sdk/client-ecs";
 import { CreateQueueCommandOutput, Message } from "@aws-sdk/client-sqs";
 import { JobMessageBody, JobStatus, JobStatusMessageBody } from "./job-types";
-import { PutLogEvents, createLogStream } from "../lib/sdk-drivers/cloudwatch/cloudwatch-io";
+import { LogBuffer } from "./log-buffer";
 
 const region = importRegionEnvVar();
 const group = validateEnvVar(ECS_GROUP);
@@ -64,16 +64,7 @@ const MAX_WORKER_RETRY_COUNT = 2;
 const WorkerMemoryMB = 1024;
 const WorkerCpu = 512;
 
-const LogGroupName = "/aws/batch-processor";
-const LogStreamName = `orchestrator-${processId}`;
-
-async function logEvent(message: string) {
-  await PutLogEvents({
-    logGroupName: LogGroupName,
-    logStreamName: LogStreamName,
-    logMessages: [message],
-  });
-}
+const log = new LogBuffer();
 
 interface OrchestratorInput {
   handleGenerateInputData: { (): Promise<Array<string | number>> };
@@ -88,10 +79,6 @@ export async function orchestrator({
   handleJobStatusResponse,
   workerRunCommand,
 }: OrchestratorInput) {
-  await createLogStream({
-    logGroupName: LogGroupName,
-    logStreamName: LogStreamName,
-  });
 
   let queueUrls:
     | {
@@ -106,8 +93,6 @@ export async function orchestrator({
     const services = await setupPipeline(workerRunCommand);
     queueUrls = services.queueUrls;
     serviceArn = services.workerServiceArn;
-
-    await sleep(10000);
 
     await writeBatches({
       inputData,
@@ -127,12 +112,12 @@ export async function orchestrator({
 }
 
 async function setupPipeline(workerRunCommand: string[]) {
-  console.log("orchestrator starting");
+  log.log("orchestrator starting");
 
   const jobQueueName = `job-queue-${processId}`;
   const jobStatusQueueName = `job-status-queue-${processId}`;
 
-  console.log("Creating job queue and response state queues");
+  log.log("Creating job queue and response state queues");
 
   // Documentation says to wait at least a second, but starting tasks
   // should easily cover that
@@ -141,7 +126,7 @@ async function setupPipeline(workerRunCommand: string[]) {
     jobStatusQueueName,
   });
 
-  console.log("Creating worker task definition");
+  log.log("Creating worker task definition");
 
   const workerTaskDefinitionResponse = await registerTaskDefinition({
     family: `batch-processor-worker-family-${processId}`,
@@ -211,7 +196,7 @@ async function setupPipeline(workerRunCommand: string[]) {
     );
   }
 
-  await logEvent("Creating worker service");
+  log.log("Creating worker service");
 
   const createdService = await createService({
     clusterArn,
@@ -247,7 +232,7 @@ interface QueueTaskArns {
 }
 
 async function cleanUp({ queueUrls, workerServiceArn }: QueueTaskArns) {
-  await logEvent("Cleaning up");
+  log.log("Cleaning up");
   if (workerServiceArn) {
     await deleteService({
       serviceArn: workerServiceArn,
@@ -415,13 +400,13 @@ async function writeBatches({
   const batchParallelism = 6;
   const groupedInputData = groupArray(inputData, 10);
   const numBatches = groupedInputData.length;
-  await logEvent("numBatches: " + numBatches);
+  log.log("numBatches: " + numBatches);
 
   while (readBatchIdx < numBatches && readStallCounter > 0) {
     readStallCounter -= 1;
-    await logEvent("readStallCounter: " + readStallCounter);
-    await logEvent("readBatchIdx: " + readBatchIdx);
-    await logEvent("writeBatchIdx: " + writeBatchIdx);
+    log.log("readStallCounter: " + readStallCounter);
+    log.log("readBatchIdx: " + readBatchIdx);
+    log.log("writeBatchIdx: " + writeBatchIdx);
     if (workerPool.size < batchParallelism && readBatchIdx < numBatches) {
       const numBatchesRemaining = numBatches - writeBatchIdx;
       const numBatchesToAdd = batchParallelism - workerPool.size;

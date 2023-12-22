@@ -42,21 +42,21 @@ export async function createLogStream({
 interface PutLogEventsInput {
   logGroupName: string;
   logStreamName: string;
-  logMessages: Array<string>;
+  logEvents: Array<{
+    timestamp: number;
+    message: string;
+  }>;
 }
 
-export async function PutLogEvents({
+export async function putLogEvents({
   logGroupName,
   logStreamName,
-  logMessages,
+  logEvents,
 }: PutLogEventsInput) {
   const input = {
     logGroupName,
     logStreamName,
-    logEvents: logMessages.map((message) => ({
-      message: message,
-      timestamp: Date.now(),
-    })),
+    logEvents,
   };
   const command = new CreateLogStreamCommand(input);
   return cloudwatchLogsClient.send(command);
