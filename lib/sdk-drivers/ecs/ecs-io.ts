@@ -55,8 +55,6 @@ export async function runTask({
   environment = {},
   command,
 }: RunTaskInput) {
-  const client = new ECSClient({ region });
-
   const adaptedEnvironment = Object.keys(environment).map((k) => {
     return {
       name: k,
@@ -89,7 +87,7 @@ export async function runTask({
     launchType: LaunchType.FARGATE,
     networkConfiguration: {
       awsvpcConfiguration: {
-        assignPublicIp: AssignPublicIp.DISABLED,
+        assignPublicIp: AssignPublicIp.ENABLED,
         securityGroups: securityGroupArns,
         subnets: subnetArns,
       },
@@ -100,7 +98,7 @@ export async function runTask({
     },
   };
   const runTaskCommand = new RunTaskCommand(input);
-  return await client.send(runTaskCommand);
+  return await ecsClient.send(runTaskCommand);
 }
 
 interface StopTaskInput {

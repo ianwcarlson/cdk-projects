@@ -1,11 +1,12 @@
-import { PROCESS_ID, REGION } from "../environment-variables";
+import { PROCESS_ID } from "../environment-variables";
 import { createLogStream, putLogEvents } from "../lib/sdk-drivers/cloudwatch/cloudwatch-io";
 import { validateEnvVar } from "../utils";
 
-const processId = validateEnvVar(PROCESS_ID)
+const processId = Date.now().toString();
+
+console.log("PROCESS_ID", processId);
 
 const LogGroupName = "/aws/batch-processor";
-const LogStreamName = `orchestrator-${processId}`;
 
 const MAX_BUFFER_SIZE = 50;
 const FLUSH_BUFFER_TIMEOUT_MS = 2000;
@@ -29,23 +30,30 @@ export class LogBuffer {
   runId: string;
   byteOffset: number;
   logStreamInitialized: boolean;
+  logStreamName: string;
 
-  constructor() {
+  constructor(logStreamPrefix: string) {
     this.timeoutHandle = setTimeout(() => {
       this.flushBuffer(false);
     }, FLUSH_BUFFER_TIMEOUT_MS);
     this.bufferSize = 0;
     this.byteOffset = 0;
     this.logStreamInitialized = false;
+    this.logStreamName = `${logStreamPrefix}-${processId}`;
   }
 
   public async log(log: string, level?: LogLevelEnum) {
     if (!this.logStreamInitialized) {
       this.logStreamInitialized = true;
-      await createLogStream({
-        logGroupName: LogGroupName,
-        logStreamName: LogStreamName,
-      });
+      console.log("Creating log stream", this.logStreamName);
+      try {
+        await createLogStream({
+          logGroupName: LogGroupName,
+          logStreamName: this.logStreamName,
+        });
+      } catch (e) {
+        console.log("Error creating log stream", e);
+      }
     }
     const len = log.length;
     this.logBuffer.push({ timestamp: Date.now(), message: log });
@@ -64,7 +72,7 @@ export class LogBuffer {
     // We don't await to avoid blocking the main thread
     putLogEvents({
       logGroupName: LogGroupName,
-      logStreamName: LogStreamName,
+      logStreamName: this.logStreamName,
       logEvents: this.logBuffer,
     });
 

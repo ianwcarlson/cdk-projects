@@ -33,4 +33,5 @@ export interface BatchProcessorLambdaTopProps extends NestedStackProps {
   batchProcessorEcsGroup: string;
   executionRoleArn: string;
   taskRoleArn: string;
+  orchestratorTaskDefinitionArn: string;
 }

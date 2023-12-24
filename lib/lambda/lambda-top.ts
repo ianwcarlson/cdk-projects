@@ -9,6 +9,7 @@ import {
   ECS_SECURITY_GROUP_ARN,
   ECS_SUBNET_ARN,
   ECS_TASK_ROLE_ARN,
+  ORCHESTRATOR_TASK_DEFINITION_ARN,
   REGION,
 } from "../../environment-variables";
 import { ManagedPolicy } from "aws-cdk-lib/aws-iam";
@@ -172,6 +173,7 @@ export class BatchProcessorLambdaTop extends NestedStack {
         [ECS_TASK_ROLE_ARN]: props.taskRoleArn,
         [ECS_EXECUTION_ROLE_ARN]: props.taskRoleArn,
         [ECS_GROUP]: props.batchProcessorEcsGroup,
+        [ORCHESTRATOR_TASK_DEFINITION_ARN]: props.orchestratorTaskDefinitionArn,
       },
     });
   }

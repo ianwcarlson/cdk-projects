@@ -4,9 +4,9 @@ import {
   DescribeLogGroupsCommand,
   DescribeLogGroupsCommandInput,
   LogGroupClass,
+  PutLogEventsCommand,
 } from "@aws-sdk/client-cloudwatch-logs";
 import { cloudwatchLogsClient } from "./cloudwatch-client";
-import { log } from "console";
 
 export async function createLogGroup(logGroupName: string) {
   const input = {
@@ -53,11 +53,13 @@ export async function putLogEvents({
   logStreamName,
   logEvents,
 }: PutLogEventsInput) {
-  const input = {
-    logGroupName,
-    logStreamName,
-    logEvents,
-  };
-  const command = new CreateLogStreamCommand(input);
-  return cloudwatchLogsClient.send(command);
+  if (logEvents.length > 0) {
+    const input = {
+      logGroupName,
+      logStreamName,
+      logEvents,
+    };
+    const command = new PutLogEventsCommand(input);
+    return cloudwatchLogsClient.send(command);
+  }
 }

@@ -1,3 +1,6 @@
+import path from "path";
+import fs from "fs";
+
 import { nanoid } from "nanoid";
 import { JOB_QUEUE_URL, JOB_STATUS_QUEUE_URL, PROCESS_ID } from "../environment-variables";
 import {
@@ -6,19 +9,15 @@ import {
 } from "../lib/sdk-drivers/sqs/sqs-io";
 import { validateEnvVar } from "../utils";
 import { JobMessageBody, JobStatusMessageBody } from "./job-types";
-import { putLogEvents, createLogStream } from "../lib/sdk-drivers/cloudwatch/cloudwatch-io";
 import { LogBuffer } from "./log-buffer";
+import { writeToHeartbeatFile } from "./common";
 
 const MAX_IDLE_COUNT = 1000;
 
 const jobQueueUrl = validateEnvVar(JOB_QUEUE_URL);
 const jobStatusQueueUrl = validateEnvVar(JOB_STATUS_QUEUE_URL);
-const processId = validateEnvVar(PROCESS_ID);
 
-const LogGroupName = "/aws/batch-processor";
-const LogStreamName = `worker-${processId}`;
-
-const log = new LogBuffer();
+const log = new LogBuffer("worker");
 
 interface WorkerProcessInput {
   handleProcessMessage: (
@@ -29,16 +28,14 @@ interface WorkerProcessInput {
 export async function workerProcessInput({
   handleProcessMessage,
 }: WorkerProcessInput) {
-  await createLogStream({
-    logGroupName: LogGroupName,
-    logStreamName: LogStreamName,
-  });
   
   log.log("Worker starting");
 
   let timeOutCount = MAX_IDLE_COUNT;
 
   while (timeOutCount > 0) {
+    writeToHeartbeatFile();
+
     const { response: message, acknowledgeMessageReceived } =
       await receiveMessage({
         queueUrl: jobQueueUrl,

@@ -8,4 +8,4 @@ node_modules
 cdk.out
 
 build-out/
-docker-build/batch-processor-app
+docker/batch-processor-app

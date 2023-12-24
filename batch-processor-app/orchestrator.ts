@@ -43,6 +43,8 @@ import { AssignPublicIp, RunTaskCommandOutput } from "@aws-sdk/client-ecs";
 import { CreateQueueCommandOutput, Message } from "@aws-sdk/client-sqs";
 import { JobMessageBody, JobStatus, JobStatusMessageBody } from "./job-types";
 import { LogBuffer } from "./log-buffer";
+import { Duration } from "aws-cdk-lib";
+import { writeToHeartbeatFile } from "./common";
 
 const region = importRegionEnvVar();
 const group = validateEnvVar(ECS_GROUP);
@@ -54,9 +56,9 @@ const batchParallelism = parseInt(validateEnvVar(BATCH_PARALLELISM));
 const executionRoleArn = validateEnvVar(ECS_EXECUTION_ROLE_ARN);
 const taskRoleArn = validateEnvVar(ECS_TASK_ROLE_ARN);
 const workerImageName = validateEnvVar(WORKER_IMAGE_NAME);
-const processId = validateEnvVar(PROCESS_ID);
-const orchestratorServiceName = validateEnvVar(ORCHESTRATOR_SERVICE_NAME);
 const logGroupName = validateEnvVar(LOG_GROUP_NAME);
+
+const processId = new Date().toISOString().replace(/[:.]/g, "-");
 
 const MAX_RETRY_COUNT = 1000;
 const MAX_READ_STALL_COUNT = 10;
@@ -64,7 +66,7 @@ const MAX_WORKER_RETRY_COUNT = 2;
 const WorkerMemoryMB = 1024;
 const WorkerCpu = 512;
 
-const log = new LogBuffer();
+const log = new LogBuffer("orchestrator");
 
 interface OrchestratorInput {
   handleGenerateInputData: { (): Promise<Array<string | number>> };
@@ -112,6 +114,8 @@ export async function orchestrator({
 }
 
 async function setupPipeline(workerRunCommand: string[]) {
+  writeToHeartbeatFile();
+
   log.log("orchestrator starting");
 
   const jobQueueName = `job-queue-${processId}`;
@@ -182,6 +186,13 @@ async function setupPipeline(workerRunCommand: string[]) {
             value: processId,
           }
         ],
+        healthCheck: {
+          command: ["CMD-SHELL", "bash healthcheck.sh"],
+          interval: 60,
+          retries: 5,
+          startPeriod: 60,
+          timeout: 30,
+        }
       },
     ],
   });
@@ -233,6 +244,9 @@ interface QueueTaskArns {
 
 async function cleanUp({ queueUrls, workerServiceArn }: QueueTaskArns) {
   log.log("Cleaning up");
+
+  writeToHeartbeatFile();
+
   if (workerServiceArn) {
     await deleteService({
       serviceArn: workerServiceArn,
@@ -241,12 +255,15 @@ async function cleanUp({ queueUrls, workerServiceArn }: QueueTaskArns) {
   }
 
   await sleep(10000);
+  writeToHeartbeatFile();
 
   for (const queueUrl of queueUrls) {
     if (queueUrl) {
       await deleteQueue(queueUrl);
     }
   }
+
+  writeToHeartbeatFile();
 
   // temp
   const moreQueueUrls = await listQueues("job-");
@@ -256,17 +273,21 @@ async function cleanUp({ queueUrls, workerServiceArn }: QueueTaskArns) {
     }
   }
 
+  writeToHeartbeatFile();
+
+  process.exit(0);
+
   // And for my next trick, I will delete myself
-  const orchestratorService = await findServiceByName({
-    clusterArn,
-    serviceName: orchestratorServiceName,
-  });
-  if (orchestratorService && orchestratorService.serviceArn) {
-    await deleteService({
-      serviceArn: orchestratorService.serviceArn,
-      clusterArn,
-    });
-  }
+  // const orchestratorService = await findServiceByName({
+  //   clusterArn,
+  //   serviceName: orchestratorServiceName,
+  // });
+  // if (orchestratorService && orchestratorService.serviceArn) {
+  //   await deleteService({
+  //     serviceArn: orchestratorService.serviceArn,
+  //     clusterArn,
+  //   });
+  // }
 }
 
 interface CreateQueuesInput {
@@ -403,7 +424,10 @@ async function writeBatches({
   log.log("numBatches: " + numBatches);
 
   while (readBatchIdx < numBatches && readStallCounter > 0) {
+    writeToHeartbeatFile();
+
     readStallCounter -= 1;
+
     log.log("readStallCounter: " + readStallCounter);
     log.log("readBatchIdx: " + readBatchIdx);
     log.log("writeBatchIdx: " + writeBatchIdx);

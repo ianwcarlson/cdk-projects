@@ -4,6 +4,7 @@ ENV PROJ_ROOT=code
 
 RUN mkdir code/
 ADD batch-processor-app/ ${PROJ_ROOT}
+ADD healthcheck.sh ${PROJ_ROOT}
 
 WORKDIR /${PROJ_ROOT}
 

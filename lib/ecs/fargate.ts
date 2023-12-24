@@ -166,6 +166,13 @@ export class FargateStack extends NestedStack {
       entryPoint: params.EntryPoint,
       // referencesSecretJsonField: true,
       ...this.overlayCommonFargateTaskProps(params),
+      healthCheck: {
+        command: ["CMD-SHELL", "bash healthcheck.sh"],
+        interval: Duration.seconds(60),
+        retries: 5,
+        startPeriod: Duration.seconds(60),
+        timeout: Duration.seconds(30),
+      },
     };
 
     const containerDefinition = taskDefinition.addContainer(
