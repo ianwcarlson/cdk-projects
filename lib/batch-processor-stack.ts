@@ -78,7 +78,8 @@ export class BatchProcessorStack extends cdk.Stack {
         batchProcessorEcsGroup: fargateStack.batchProcessorEcsGroup,
         executionRoleArn: fargateStack.fargateExecutionRole.roleArn,
         taskRoleArn: fargateStack.fargateTaskRole.roleArn,
-        orchestratorTaskDefinitionArn: fargateStack.orchestratorTaskDefinition.taskDefinitionArn
+        orchestratorTaskDefinitionArn:
+          fargateStack.orchestratorTaskDefinition.taskDefinitionArn,
       },
     );
   }

@@ -1,5 +1,5 @@
-import path from 'path';
-import fs from 'fs';
+import path from "path";
+import fs from "fs";
 
 export async function writeToHeartbeatFile() {
   const heartbeatFile = path.join(path.join(__dirname), "heartbeat.json");

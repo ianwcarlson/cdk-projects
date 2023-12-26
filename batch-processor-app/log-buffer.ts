@@ -1,5 +1,8 @@
 import { PROCESS_ID } from "../environment-variables";
-import { createLogStream, putLogEvents } from "../lib/sdk-drivers/cloudwatch/cloudwatch-io";
+import {
+  createLogStream,
+  putLogEvents,
+} from "../lib/sdk-drivers/cloudwatch/cloudwatch-io";
 import { validateEnvVar } from "../utils";
 
 const processId = Date.now().toString();
@@ -52,7 +55,7 @@ export class LogBuffer {
           logStreamName: this.logStreamName,
         });
       } catch (e) {
-        console.log("Error creating log stream", e);
+        // console.log("Error creating log stream", e);
       }
     }
     const len = log.length;

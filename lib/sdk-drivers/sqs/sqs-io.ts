@@ -130,10 +130,12 @@ export async function receiveMessage({
     if (response.Messages) {
       return deleteMessageBatch({
         queueUrl,
-        entries: response.Messages.map((m) => ({
-          id: m.MessageId || "",
-          receiptHandle: m.ReceiptHandle || "",
-        })),
+        entries: response.Messages.map((m) => {
+          return {
+            id: m.MessageId || "",
+            receiptHandle: m.ReceiptHandle || "",
+          };
+        }),
       });
     }
     return null;

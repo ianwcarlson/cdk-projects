@@ -1,10 +1,13 @@
 import { JobMessageBody, JobStatus, JobStatusMessageBody } from "./job-types";
+import { LogBuffer } from "./log-buffer";
 import { workerProcessInput } from "./worker";
+
+const log = new LogBuffer("worker");
 
 async function handleProcessMessage(
   message: JobMessageBody,
 ): Promise<JobStatusMessageBody> {
-  console.log("Processing message", message);
+  log.log("Processing message" + JSON.stringify(message));
 
   return {
     batchIndex: message.batchIndex,

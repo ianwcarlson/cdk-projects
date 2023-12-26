@@ -43,7 +43,6 @@ import { AssignPublicIp, RunTaskCommandOutput } from "@aws-sdk/client-ecs";
 import { CreateQueueCommandOutput, Message } from "@aws-sdk/client-sqs";
 import { JobMessageBody, JobStatus, JobStatusMessageBody } from "./job-types";
 import { LogBuffer } from "./log-buffer";
-import { Duration } from "aws-cdk-lib";
 import { writeToHeartbeatFile } from "./common";
 
 const region = importRegionEnvVar();
@@ -81,7 +80,6 @@ export async function orchestrator({
   handleJobStatusResponse,
   workerRunCommand,
 }: OrchestratorInput) {
-
   let queueUrls:
     | {
         jobQueueUrl: string;
@@ -184,7 +182,7 @@ async function setupPipeline(workerRunCommand: string[]) {
           {
             name: PROCESS_ID,
             value: processId,
-          }
+          },
         ],
         healthCheck: {
           command: ["CMD-SHELL", "bash healthcheck.sh"],
@@ -192,7 +190,7 @@ async function setupPipeline(workerRunCommand: string[]) {
           retries: 5,
           startPeriod: 60,
           timeout: 30,
-        }
+        },
       },
     ],
   });
@@ -304,7 +302,7 @@ async function createQueues({
       createQueue({ queueName: jobQueueName }),
       createQueue({ queueName: jobStatusQueueName }),
     ]);
-    console.log("createQueueResponses: ", JSON.stringify(createQueueResponses));
+
     const failedResponses =
       getFailedValuesFromSettledPromises(createQueueResponses);
     if (failedResponses.length > 0) {
@@ -444,11 +442,12 @@ async function writeBatches({
         const taskIds = groupedInputData[i];
         batchIndices.push(writeBatchIdx);
         workerPool.set(writeBatchIdx, { currentTime, taskIds, retries: 0 });
-        console.log("workerPool yo: ", workerPool.entries());
+        log.log("workerPool yo: " + JSON.stringify(workerPool.entries()));
         writeBatchIdx += 1;
       }
 
       const writeBatchPromises = batchIndices.map((batchIndex) => {
+        log.log("Writing batch " + batchIndex + " to queue");
         return writeToWorkerQueue({
           queueUrl: workerQueueUrl,
           batchIndex,
@@ -477,6 +476,7 @@ async function writeBatches({
         const worker = workerPool.get(batchIndex);
         if (worker) {
           readBatchIdx = +1;
+          console.log("readBatchIdx: ", readBatchIdx);
           workerPool.delete(batchIndex);
           if (status === JobStatus.FAILURE) {
             if (worker.retries < MAX_WORKER_RETRY_COUNT) {
@@ -518,10 +518,12 @@ async function writeToWorkerQueue({
   const messageBody: JobMessageBody = { batchIndex, data, jobProperties };
   sendMessageBatch({
     queueUrl,
-    messages: data.map(() => ({
-      id: nanoid(),
-      messageBody: JSON.stringify(messageBody),
-    })),
+    messages: [
+      {
+        id: nanoid(),
+        messageBody: JSON.stringify(messageBody),
+      },
+    ],
   });
 }
 

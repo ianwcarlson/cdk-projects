@@ -32,7 +32,9 @@ const subnetArn = validateEnvVar(ECS_SUBNET_ARN);
 const executionRoleArn = validateEnvVar(ECS_EXECUTION_ROLE_ARN);
 const taskRoleArn = validateEnvVar(ECS_TASK_ROLE_ARN);
 const group = validateEnvVar(ECS_GROUP);
-const orchestratorTaskDefinitionArn = validateEnvVar(ORCHESTRATOR_TASK_DEFINITION_ARN);
+const orchestratorTaskDefinitionArn = validateEnvVar(
+  ORCHESTRATOR_TASK_DEFINITION_ARN,
+);
 
 const LogGroupName = "/aws/batch-processor";
 const WorkerImageName = "ianwcarlson/batch-processor:latest";
@@ -210,7 +212,7 @@ export const handler = async (event: InputEvent) => {
     subnetArns: [subnetArn],
     containerName: group,
     environment: {
-      [BATCH_PARALLELISM]: event.numWorkers?.toString() || "2",
+      [BATCH_PARALLELISM]: event.numWorkers?.toString() || "1",
       [REGION]: region,
       [LOG_GROUP_NAME]: LogGroupName,
       [ECS_CLUSTER_ARN]: cluster,

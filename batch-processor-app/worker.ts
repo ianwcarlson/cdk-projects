@@ -2,7 +2,11 @@ import path from "path";
 import fs from "fs";
 
 import { nanoid } from "nanoid";
-import { JOB_QUEUE_URL, JOB_STATUS_QUEUE_URL, PROCESS_ID } from "../environment-variables";
+import {
+  JOB_QUEUE_URL,
+  JOB_STATUS_QUEUE_URL,
+  PROCESS_ID,
+} from "../environment-variables";
 import {
   receiveMessage,
   sendMessageBatch,
@@ -28,12 +32,12 @@ interface WorkerProcessInput {
 export async function workerProcessInput({
   handleProcessMessage,
 }: WorkerProcessInput) {
-  
   log.log("Worker starting");
 
   let timeOutCount = MAX_IDLE_COUNT;
 
   while (timeOutCount > 0) {
+    log.log("worker timeOutCount: " + timeOutCount);
     writeToHeartbeatFile();
 
     const { response: message, acknowledgeMessageReceived } =
@@ -48,11 +52,17 @@ export async function workerProcessInput({
       const payload: JobMessageBody = JSON.parse(
         message.Messages[0].Body || "",
       );
+      log.log("Worker message body: " + payload);
       const jobStatusMessage = await handleProcessMessage(payload);
 
-      await acknowledgeMessageReceived();
+      const deleteResponse = await acknowledgeMessageReceived();
+      if ((deleteResponse?.Failed || []).length > 0) {
+        log.log("Failed to delete message: " + JSON.stringify(deleteResponse));
+      }
 
-      log.log("Worker sending job status message" + jobStatusMessage);
+      log.log(
+        "Worker sending job status message" + JSON.stringify(jobStatusMessage),
+      );
 
       const response = await sendMessageBatch({
         queueUrl: jobStatusQueueUrl,
@@ -61,6 +71,7 @@ export async function workerProcessInput({
         ],
       });
       // console.log("Sent message: " + JSON.stringify(response));
+      timeOutCount = MAX_IDLE_COUNT;
     } else {
       timeOutCount -= 1;
     }
