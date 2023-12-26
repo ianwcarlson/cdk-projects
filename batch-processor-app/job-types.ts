@@ -7,10 +7,16 @@ export enum JobStatus {
   FAILURE = "FAILURE",
 }
 
+export enum JobMessageType {
+  DATA = "DATA",
+  SHUTDOWN = "SHUTDOWN",
+}
+
 export interface JobMessageBody {
   batchIndex: number;
   data: Array<string | number>;
   jobProperties: object;
+  messageType: JobMessageType;
 }
 
 export interface JobStatusMessageBody {

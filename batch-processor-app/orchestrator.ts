@@ -41,7 +41,7 @@ import {
 } from "../utils";
 import { AssignPublicIp, RunTaskCommandOutput } from "@aws-sdk/client-ecs";
 import { CreateQueueCommandOutput, Message } from "@aws-sdk/client-sqs";
-import { JobMessageBody, JobStatus, JobStatusMessageBody } from "./job-types";
+import { JobMessageBody, JobMessageType, JobStatus, JobStatusMessageBody } from "./job-types";
 import { LogBuffer } from "./log-buffer";
 import { writeToHeartbeatFile } from "./common";
 
@@ -453,6 +453,7 @@ async function writeBatches({
           batchIndex,
           data: groupedInputData[batchIndex],
           jobProperties,
+          messageType: JobMessageType.DATA,
         });
       });
       await Promise.allSettled(writeBatchPromises);
@@ -470,13 +471,13 @@ async function writeBatches({
 
       for (const message of messages) {
         const { batchIndex, status } = message;
-        console.log("batchIndex: ", batchIndex);
-        console.log("status: ", status);
-        console.log("workerPool: ", JSON.stringify(workerPool));
+        log.log("batchIndex: " + batchIndex);
+        log.log("status: " + status);
+        log.log("workerPool: " + JSON.stringify(workerPool));
         const worker = workerPool.get(batchIndex);
         if (worker) {
           readBatchIdx = +1;
-          console.log("readBatchIdx: ", readBatchIdx);
+          log.log("readBatchIdx: " + readBatchIdx);
           workerPool.delete(batchIndex);
           if (status === JobStatus.FAILURE) {
             if (worker.retries < MAX_WORKER_RETRY_COUNT) {
@@ -500,6 +501,14 @@ async function writeBatches({
     }
     // console.log("Donzo");
   }
+
+  await writeToWorkerQueue({
+    queueUrl: workerQueueUrl,
+    batchIndex: -1,
+    data: [],
+    jobProperties,
+    messageType: JobMessageType.SHUTDOWN,
+  });
 }
 
 interface WriteToWorkerQueueInput {
@@ -507,6 +516,7 @@ interface WriteToWorkerQueueInput {
   batchIndex: number;
   data: Array<string | number>;
   jobProperties: object; // refine further
+  messageType: JobMessageType;
 }
 
 async function writeToWorkerQueue({
@@ -514,8 +524,9 @@ async function writeToWorkerQueue({
   batchIndex,
   data,
   jobProperties,
+  messageType,
 }: WriteToWorkerQueueInput) {
-  const messageBody: JobMessageBody = { batchIndex, data, jobProperties };
+  const messageBody: JobMessageBody = { batchIndex, data, jobProperties, messageType };
   sendMessageBatch({
     queueUrl,
     messages: [

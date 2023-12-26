@@ -12,7 +12,7 @@ import {
   sendMessageBatch,
 } from "../lib/sdk-drivers/sqs/sqs-io";
 import { validateEnvVar } from "../utils";
-import { JobMessageBody, JobStatusMessageBody } from "./job-types";
+import { JobMessageBody, JobMessageType, JobStatusMessageBody } from "./job-types";
 import { LogBuffer } from "./log-buffer";
 import { writeToHeartbeatFile } from "./common";
 
@@ -52,7 +52,13 @@ export async function workerProcessInput({
       const payload: JobMessageBody = JSON.parse(
         message.Messages[0].Body || "",
       );
-      log.log("Worker message body: " + payload);
+      log.log("Worker message body: " + message.Messages[0].Body);
+
+      if (payload.messageType === JobMessageType.SHUTDOWN) {
+        log.log("Received shutdown message. Worker shutting down");
+        break;
+      }
+
       const jobStatusMessage = await handleProcessMessage(payload);
 
       const deleteResponse = await acknowledgeMessageReceived();
