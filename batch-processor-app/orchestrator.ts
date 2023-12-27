@@ -36,7 +36,6 @@ import {
   getFulfilledValuesFromSettledPromises,
   groupArray,
   importRegionEnvVar,
-  sleep,
   validateEnvVar,
 } from "../utils";
 import { AssignPublicIp, RunTaskCommandOutput } from "@aws-sdk/client-ecs";
@@ -51,7 +50,6 @@ import { LogBuffer } from "./log-buffer";
 import { writeToHeartbeatFile } from "./common";
 
 const region = importRegionEnvVar();
-const group = validateEnvVar(ECS_GROUP);
 const clusterArn = validateEnvVar(ECS_CLUSTER_ARN);
 const securityGroupArn = validateEnvVar(ECS_SECURITY_GROUP_ARN);
 const subnetArn = validateEnvVar(ECS_SUBNET_ARN);
@@ -66,7 +64,6 @@ const processId = new Date().toISOString().replace(/[:.]/g, "-");
 
 const MAX_RETRY_COUNT = 1000;
 const MAX_READ_STALL_COUNT = 10;
-const MAX_WORKER_RETRY_COUNT = 2;
 const WorkerMemoryMB = 1024;
 const WorkerCpu = 512;
 
