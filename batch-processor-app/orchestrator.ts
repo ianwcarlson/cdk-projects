@@ -17,7 +17,8 @@ import {
 import {
   createService,
   deleteService,
-  deleteTaskDefinition as deleteTaskDefinitions,
+  deleteTaskDefinitions as deleteTaskDefinitions,
+  listAllTaskDefinitions,
   registerTaskDefinition,
 } from "../lib/sdk-drivers/ecs/ecs-io";
 import {
@@ -31,6 +32,7 @@ import {
   getFulfilledValuesFromSettledPromises,
   groupArray,
   importRegionEnvVar,
+  sleep,
   validateEnvVar,
 } from "../utils";
 import { AssignPublicIp } from "@aws-sdk/client-ecs";
@@ -62,6 +64,9 @@ const WorkerMemoryMB = 1024;
 const WorkerCpu = 512;
 
 const logger = new LogBuffer("orchestrator");
+process.on('exit', (code) => {
+  logger.stopLogBuffer(code.toString());
+});
 
 interface OrchestratorInput {
   handleGenerateInputData: { (): Promise<Array<string | number>> };
@@ -91,6 +96,7 @@ export async function orchestrator({
     queueUrls = services.queueUrls;
     serviceArn = services.workerServiceArn;
     taskDefinitionArn = services.taskDefinitionArn;
+    console.log("taskDefinitionArn: ", taskDefinitionArn);
 
     await writeBatches({
       inputData,
@@ -206,7 +212,8 @@ async function setupPipeline(workerRunCommand: string[]) {
 
   logger.log("Creating worker service");
 
-  const taskDefinitionArn = workerTaskDefinitionResponse.taskDefinition.taskDefinitionArn
+  const taskDefinitionArn =
+    workerTaskDefinitionResponse.taskDefinition.taskDefinitionArn;
 
   // The Fargate service will ensure that the desired number of worker tasks are running
   // at all times. If a task fails, it will be restarted.
@@ -233,12 +240,17 @@ interface QueueTaskArns {
   taskDefinitionArn: string | undefined;
 }
 
-async function cleanUp({ queueUrls, workerServiceArn, taskDefinitionArn }: QueueTaskArns) {
+async function cleanUp({
+  queueUrls,
+  workerServiceArn,
+  taskDefinitionArn,
+}: QueueTaskArns) {
   logger.log("Cleaning up");
 
   writeToHeartbeatFile();
 
   if (taskDefinitionArn) {
+    logger.log("Deleting task definition: " + taskDefinitionArn);
     await deleteTaskDefinitions([taskDefinitionArn]);
   }
 

@@ -18,6 +18,7 @@ import {
   ListServicesCommandInput,
   DescribeServicesCommand,
   DeleteTaskDefinitionsCommand,
+  ListTaskDefinitionsCommandInput,
 } from "@aws-sdk/client-ecs";
 import { groupArray, importRegionEnvVar, sleep } from "../../../utils";
 import { DeleteQueueCommand } from "@aws-sdk/client-sqs";
@@ -310,6 +311,7 @@ export async function deregisterTaskDefinitions({
     taskDefinition: taskDefinitionArn,
   };
   const command = new DeregisterTaskDefinitionCommand(input);
+  return ecsClient.send(command);
 }
 
 interface CreateServiceInput {
@@ -352,12 +354,18 @@ export async function createService({
   return await ecsClient.send(command);
 }
 
-export async function deleteTaskDefinition(taskDefinitionArns: string[]) {
-  const input = {
+export async function deleteTaskDefinitions(taskDefinitionArns: string[]) {
+  for (const taskDefinitionArn of taskDefinitionArns) {
+    // Gonna get throttled if we don't wait a bit
+    await sleep(1000);
+    const response = await deregisterTaskDefinitions({ taskDefinitionArn });
+  }
+
+  const deleteInput = {
     taskDefinitions: taskDefinitionArns,
   };
-  const command = new DeleteTaskDefinitionsCommand(input);
-  return ecsClient.send(command);
+  const deleteCommand = new DeleteTaskDefinitionsCommand(deleteInput);
+  return ecsClient.send(deleteCommand);
 }
 
 interface DeleteServiceInput {
@@ -383,6 +391,34 @@ export async function deleteService({
 interface ListServicesInput {
   clusterArn: string;
   serviceName?: string;
+}
+
+interface ListAllTaskDefinitionsInput {
+  familyPrefix: string;
+}
+
+export async function listAllTaskDefinitions({
+  familyPrefix,
+}: ListAllTaskDefinitionsInput) {
+  let nextToken;
+  const taskDefinitions = [];
+
+  do {
+    const input: ListTaskDefinitionsCommandInput = { // ListTaskDefinitionsRequest
+      // familyPrefix,
+      // status: "ACTIVE" || "INACTIVE" || "DELETE_IN_PROGRESS",
+      // sort: "ASC" || "DESC",
+      nextToken,
+      maxResults: 20,
+    };
+    const command = new ListTaskDefinitionsCommand(input);
+    const response = await ecsClient.send(command);
+    nextToken = response.nextToken;
+    console.log("RESPONSE", JSON.stringify(response));
+    taskDefinitions.push(...(response.taskDefinitionArns || []));
+  } while (nextToken);
+
+  return taskDefinitions;
 }
 
 export async function listServices({ clusterArn }: ListServicesInput) {

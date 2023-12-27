@@ -62,4 +62,5 @@ export async function putLogEvents({
     const command = new PutLogEventsCommand(input);
     return cloudwatchLogsClient.send(command);
   }
+  return null;
 }

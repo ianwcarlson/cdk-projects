@@ -19,6 +19,9 @@ const jobQueueUrl = validateEnvVar(JOB_QUEUE_URL);
 const jobStatusQueueUrl = validateEnvVar(JOB_STATUS_QUEUE_URL);
 
 const logger = new LogBuffer("worker");
+process.on('exit', (code) => {
+  logger.stopLogBuffer(code.toString());
+});
 
 interface WorkerProcessInput {
   handleProcessMessage: (

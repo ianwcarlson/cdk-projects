@@ -1,7 +1,7 @@
 import { orchestrator } from "./orchestrator";
 
 async function fetchInputData() {
-  return [1, 2, 3];
+  return Array.from(new Array(21)).map((_, i) => i);
 }
 
 console.log("orchestrator-example: starting");
