@@ -4,30 +4,25 @@ import {
   BATCH_PARALLELISM,
   ECS_CLUSTER_ARN,
   ECS_EXECUTION_ROLE_ARN,
-  ECS_GROUP,
   ECS_SECURITY_GROUP_ARN,
   ECS_SUBNET_ARN,
   ECS_TASK_ROLE_ARN,
   JOB_QUEUE_URL,
   JOB_STATUS_QUEUE_URL,
   LOG_GROUP_NAME,
-  ORCHESTRATOR_SERVICE_NAME,
   PROCESS_ID,
   REGION,
   WORKER_IMAGE_NAME,
 } from "../environment-variables";
 import {
-  ECS_TASK_STATE_RUNNING,
   createService,
   deleteService,
-  findServiceByName,
-  getTaskState,
+  deleteTaskDefinition as deleteTaskDefinitions,
   registerTaskDefinition,
 } from "../lib/sdk-drivers/ecs/ecs-io";
 import {
   createQueue,
   deleteQueue,
-  listQueues,
   receiveMessage,
   sendMessageBatch,
 } from "../lib/sdk-drivers/sqs/sqs-io";
@@ -38,7 +33,7 @@ import {
   importRegionEnvVar,
   validateEnvVar,
 } from "../utils";
-import { AssignPublicIp, RunTaskCommandOutput } from "@aws-sdk/client-ecs";
+import { AssignPublicIp } from "@aws-sdk/client-ecs";
 import { CreateQueueCommandOutput, Message } from "@aws-sdk/client-sqs";
 import {
   JobMessageBody,
@@ -53,7 +48,6 @@ const region = importRegionEnvVar();
 const clusterArn = validateEnvVar(ECS_CLUSTER_ARN);
 const securityGroupArn = validateEnvVar(ECS_SECURITY_GROUP_ARN);
 const subnetArn = validateEnvVar(ECS_SUBNET_ARN);
-// const workerTaskDefinitionArn = validateEnvVar(WORKER_TASK_DEF_ARN);
 const batchParallelism = parseInt(validateEnvVar(BATCH_PARALLELISM));
 const executionRoleArn = validateEnvVar(ECS_EXECUTION_ROLE_ARN);
 const taskRoleArn = validateEnvVar(ECS_TASK_ROLE_ARN);
@@ -89,12 +83,14 @@ export async function orchestrator({
       }
     | undefined;
   let serviceArn: string | undefined;
+  let taskDefinitionArn: string | undefined;
 
   const inputData = await handleGenerateInputData();
   try {
     const services = await setupPipeline(workerRunCommand);
     queueUrls = services.queueUrls;
     serviceArn = services.workerServiceArn;
+    taskDefinitionArn = services.taskDefinitionArn;
 
     await writeBatches({
       inputData,
@@ -109,6 +105,7 @@ export async function orchestrator({
     await cleanUp({
       queueUrls: [queueUrls?.jobQueueUrl, queueUrls?.jobStatusQueueUrl],
       workerServiceArn: serviceArn,
+      taskDefinitionArn,
     });
   }
 }
@@ -209,13 +206,14 @@ async function setupPipeline(workerRunCommand: string[]) {
 
   logger.log("Creating worker service");
 
+  const taskDefinitionArn = workerTaskDefinitionResponse.taskDefinition.taskDefinitionArn
+
   // The Fargate service will ensure that the desired number of worker tasks are running
   // at all times. If a task fails, it will be restarted.
   const createdService = await createService({
     clusterArn,
     serviceName: `batch-processor-worker-service-${processId}`,
-    taskDefinitionArn:
-      workerTaskDefinitionResponse.taskDefinition.taskDefinitionArn,
+    taskDefinitionArn,
     desiredCount: batchParallelism,
     securityGroups: [securityGroupArn],
     subnets: [subnetArn],
@@ -225,18 +223,24 @@ async function setupPipeline(workerRunCommand: string[]) {
   return {
     queueUrls: { jobQueueUrl, jobStatusQueueUrl },
     workerServiceArn: createdService.service?.serviceArn,
+    taskDefinitionArn,
   };
 }
 
 interface QueueTaskArns {
   queueUrls: (string | undefined)[];
   workerServiceArn: string | undefined;
+  taskDefinitionArn: string | undefined;
 }
 
-async function cleanUp({ queueUrls, workerServiceArn }: QueueTaskArns) {
+async function cleanUp({ queueUrls, workerServiceArn, taskDefinitionArn }: QueueTaskArns) {
   logger.log("Cleaning up");
 
   writeToHeartbeatFile();
+
+  if (taskDefinitionArn) {
+    await deleteTaskDefinitions([taskDefinitionArn]);
+  }
 
   if (workerServiceArn) {
     await deleteService({
@@ -325,7 +329,6 @@ async function writeBatches({
   jobProperties,
   handleJobStatusResponse,
 }: WriteBatchesInput) {
-  const currentTime = new Date();
   let writeBatchIdx = 0;
   let readBatchIdx = 0;
   let readStallCounter = MAX_READ_STALL_COUNT;
@@ -369,6 +372,11 @@ async function writeBatches({
       });
       await Promise.allSettled(writeBatchPromises);
 
+      // We could just write everything to the job queue and then read from the
+      // status queue at the end, but by checking the status queue periodically
+      // we can potentially respond to events quicker. Example: logic can be added
+      // to the orchestrator to create different types of jobs depending on various
+      // conditions.
       const messages = await readFromWorkerStatusQueue({
         queueUrl: workerStatusQueueUrl,
       });
@@ -378,7 +386,7 @@ async function writeBatches({
         logger.log("batchIndex: " + batchIndex);
         logger.log("status: " + status);
 
-        readBatchIdx = +1;
+        readBatchIdx += 1;
         logger.log("readBatchIdx: " + readBatchIdx);
         if (status === JobStatus.FAILURE) {
           logger.log("Worker failed for batch index: " + batchIndex);
@@ -408,6 +416,7 @@ interface WriteToWorkerQueueInput {
   messageType: JobMessageType;
 }
 
+// We are not using FIFO queues because we don't have a use-case for it yet.
 async function writeToWorkerQueue({
   queueUrl,
   batchIndex,

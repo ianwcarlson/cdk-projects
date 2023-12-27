@@ -17,6 +17,7 @@ import {
   ListServicesCommand,
   ListServicesCommandInput,
   DescribeServicesCommand,
+  DeleteTaskDefinitionsCommand,
 } from "@aws-sdk/client-ecs";
 import { groupArray, importRegionEnvVar, sleep } from "../../../utils";
 import { DeleteQueueCommand } from "@aws-sdk/client-sqs";
@@ -349,6 +350,14 @@ export async function createService({
   };
   const command = new CreateServiceCommand(input);
   return await ecsClient.send(command);
+}
+
+export async function deleteTaskDefinition(taskDefinitionArns: string[]) {
+  const input = {
+    taskDefinitions: taskDefinitionArns,
+  };
+  const command = new DeleteTaskDefinitionsCommand(input);
+  return ecsClient.send(command);
 }
 
 interface DeleteServiceInput {

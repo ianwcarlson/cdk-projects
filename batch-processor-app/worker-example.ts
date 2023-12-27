@@ -9,6 +9,8 @@ async function handleProcessMessage(
 ): Promise<JobStatusMessageBody> {
   log.log("Processing message" + JSON.stringify(message));
 
+  // This is where you would do the actual work of the job
+
   return {
     batchIndex: message.batchIndex,
     status: JobStatus.SUCCESS,
