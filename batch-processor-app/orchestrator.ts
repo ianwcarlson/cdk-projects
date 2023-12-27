@@ -41,7 +41,12 @@ import {
 } from "../utils";
 import { AssignPublicIp, RunTaskCommandOutput } from "@aws-sdk/client-ecs";
 import { CreateQueueCommandOutput, Message } from "@aws-sdk/client-sqs";
-import { JobMessageBody, JobMessageType, JobStatus, JobStatusMessageBody } from "./job-types";
+import {
+  JobMessageBody,
+  JobMessageType,
+  JobStatus,
+  JobStatusMessageBody,
+} from "./job-types";
 import { LogBuffer } from "./log-buffer";
 import { writeToHeartbeatFile } from "./common";
 
@@ -65,7 +70,7 @@ const MAX_WORKER_RETRY_COUNT = 2;
 const WorkerMemoryMB = 1024;
 const WorkerCpu = 512;
 
-const log = new LogBuffer("orchestrator");
+const logger = new LogBuffer("orchestrator");
 
 interface OrchestratorInput {
   handleGenerateInputData: { (): Promise<Array<string | number>> };
@@ -114,12 +119,12 @@ export async function orchestrator({
 async function setupPipeline(workerRunCommand: string[]) {
   writeToHeartbeatFile();
 
-  log.log("orchestrator starting");
+  logger.log("orchestrator starting");
 
   const jobQueueName = `job-queue-${processId}`;
   const jobStatusQueueName = `job-status-queue-${processId}`;
 
-  log.log("Creating job queue and response state queues");
+  logger.log("Creating job queue and response state queues");
 
   // Documentation says to wait at least a second, but starting tasks
   // should easily cover that
@@ -128,7 +133,7 @@ async function setupPipeline(workerRunCommand: string[]) {
     jobStatusQueueName,
   });
 
-  log.log("Creating worker task definition");
+  logger.log("Creating worker task definition");
 
   const workerTaskDefinitionResponse = await registerTaskDefinition({
     family: `batch-processor-worker-family-${processId}`,
@@ -205,8 +210,10 @@ async function setupPipeline(workerRunCommand: string[]) {
     );
   }
 
-  log.log("Creating worker service");
+  logger.log("Creating worker service");
 
+  // The Fargate service will ensure that the desired number of worker tasks are running
+  // at all times. If a task fails, it will be restarted.
   const createdService = await createService({
     clusterArn,
     serviceName: `batch-processor-worker-service-${processId}`,
@@ -217,17 +224,6 @@ async function setupPipeline(workerRunCommand: string[]) {
     subnets: [subnetArn],
     assignPublicIp: AssignPublicIp.ENABLED,
   });
-
-  // const startedTasks = await startWorkerTasks({
-  //   uniqueId,
-  //   jobQueueUrl: queueUrls[0],
-  //   jobStatusQueueUrl: queueUrls[1],
-  //   workerRunCommand,
-  // });
-
-  // const taskArns = await extractTaskArns(startedTasks);
-
-  // await waitForTasksRunning();
 
   return {
     queueUrls: { jobQueueUrl, jobStatusQueueUrl },
@@ -241,7 +237,7 @@ interface QueueTaskArns {
 }
 
 async function cleanUp({ queueUrls, workerServiceArn }: QueueTaskArns) {
-  log.log("Cleaning up");
+  logger.log("Cleaning up");
 
   writeToHeartbeatFile();
 
@@ -252,7 +248,6 @@ async function cleanUp({ queueUrls, workerServiceArn }: QueueTaskArns) {
     });
   }
 
-  await sleep(10000);
   writeToHeartbeatFile();
 
   for (const queueUrl of queueUrls) {
@@ -263,29 +258,7 @@ async function cleanUp({ queueUrls, workerServiceArn }: QueueTaskArns) {
 
   writeToHeartbeatFile();
 
-  // temp
-  const moreQueueUrls = await listQueues("job-");
-  for (const queueUrl of moreQueueUrls) {
-    if (queueUrl) {
-      await deleteQueue(queueUrl);
-    }
-  }
-
-  writeToHeartbeatFile();
-
   process.exit(0);
-
-  // And for my next trick, I will delete myself
-  // const orchestratorService = await findServiceByName({
-  //   clusterArn,
-  //   serviceName: orchestratorServiceName,
-  // });
-  // if (orchestratorService && orchestratorService.serviceArn) {
-  //   await deleteService({
-  //     serviceArn: orchestratorService.serviceArn,
-  //     clusterArn,
-  //   });
-  // }
 }
 
 interface CreateQueuesInput {
@@ -325,59 +298,6 @@ async function createQueues({
   }
 }
 
-async function waitForTasksRunning({
-  workerTaskDefinitionArn,
-}: {
-  workerTaskDefinitionArn: string;
-}) {
-  let retryCount = MAX_RETRY_COUNT;
-  let areAllTasksRunning = false;
-
-  console.log("Waiting for tasks to start running");
-
-  do {
-    const getTaskStatePromises = Array.from(Array(batchParallelism)).map(() => {
-      return getTaskState({ clusterArn, taskArn: workerTaskDefinitionArn });
-    });
-    const taskStates = await Promise.all(getTaskStatePromises);
-    areAllTasksRunning = taskStates.every(
-      (ts) => ts.tasks && ts.tasks[0].lastStatus === ECS_TASK_STATE_RUNNING,
-    );
-
-    await sleep(500);
-
-    if (retryCount % 10 === 0) {
-      console.log(
-        `Waiting for tasks to start running. ${retryCount} retries remaining`,
-      );
-    }
-
-    retryCount -= 1;
-  } while (retryCount < MAX_RETRY_COUNT && !areAllTasksRunning);
-
-  if (retryCount === 0) {
-    const errorMessage = `Unable to start ${batchParallelism} tasks in RUNNING state`;
-    console.log(errorMessage);
-    throw new Error(errorMessage);
-  }
-
-  console.log(`${batchParallelism} tasks running`);
-}
-
-async function extractTaskArns(startedTasks: RunTaskCommandOutput[]) {
-  const taskArns = startedTasks.reduce(
-    (acc: string[], t: RunTaskCommandOutput) => {
-      if (t.tasks && t.tasks.length > 0 && t.tasks[0].taskArn) {
-        acc.push(t.tasks[0].taskArn);
-      }
-      return acc;
-    },
-    [],
-  );
-  console.log("Task ARNs: ", taskArns);
-  return taskArns;
-}
-
 async function extractQueueUrls(
   createQueueValues: (CreateQueueCommandOutput | null)[],
 ) {
@@ -412,26 +332,22 @@ async function writeBatches({
   let writeBatchIdx = 0;
   let readBatchIdx = 0;
   let readStallCounter = MAX_READ_STALL_COUNT;
-  const workerPool: Map<
-    number,
-    { currentTime: Date; taskIds: (string | number)[]; retries: number }
-  > = new Map();
   const batchParallelism = 6;
   const groupedInputData = groupArray(inputData, 10);
   const numBatches = groupedInputData.length;
-  log.log("numBatches: " + numBatches);
+  logger.log("numBatches: " + numBatches);
 
   while (readBatchIdx < numBatches && readStallCounter > 0) {
     writeToHeartbeatFile();
 
     readStallCounter -= 1;
 
-    log.log("readStallCounter: " + readStallCounter);
-    log.log("readBatchIdx: " + readBatchIdx);
-    log.log("writeBatchIdx: " + writeBatchIdx);
-    if (workerPool.size < batchParallelism && readBatchIdx < numBatches) {
+    logger.log("readStallCounter: " + readStallCounter);
+    logger.log("readBatchIdx: " + readBatchIdx);
+    logger.log("writeBatchIdx: " + writeBatchIdx);
+    if (readBatchIdx < numBatches) {
       const numBatchesRemaining = numBatches - writeBatchIdx;
-      const numBatchesToAdd = batchParallelism - workerPool.size;
+      const numBatchesToAdd = batchParallelism;
       const numBatchesToAddActual = Math.min(
         numBatchesToAdd,
         numBatchesRemaining,
@@ -441,13 +357,11 @@ async function writeBatches({
       for (let i = 0; i < numBatchesToAddActual; i++) {
         const taskIds = groupedInputData[i];
         batchIndices.push(writeBatchIdx);
-        workerPool.set(writeBatchIdx, { currentTime, taskIds, retries: 0 });
-        log.log("workerPool yo: " + JSON.stringify(workerPool.entries()));
         writeBatchIdx += 1;
       }
 
       const writeBatchPromises = batchIndices.map((batchIndex) => {
-        log.log("Writing batch " + batchIndex + " to queue");
+        logger.log("Writing batch " + batchIndex + " to queue");
         return writeToWorkerQueue({
           queueUrl: workerQueueUrl,
           batchIndex,
@@ -458,48 +372,26 @@ async function writeBatches({
       });
       await Promise.allSettled(writeBatchPromises);
 
-      // const failed = responses.filter((response, idx, promiseSettledResult) => {
-      //   console.log({ promiseSettledResult });
-      //   return response.status === "rejected";
-      // });
-
       const messages = await readFromWorkerStatusQueue({
         queueUrl: workerStatusQueueUrl,
       });
 
-      // console.log("messages: " + JSON.stringify(messages));
-
       for (const message of messages) {
         const { batchIndex, status } = message;
-        log.log("batchIndex: " + batchIndex);
-        log.log("status: " + status);
-        log.log("workerPool: " + JSON.stringify(workerPool));
-        const worker = workerPool.get(batchIndex);
-        if (worker) {
-          readBatchIdx = +1;
-          log.log("readBatchIdx: " + readBatchIdx);
-          workerPool.delete(batchIndex);
-          if (status === JobStatus.FAILURE) {
-            if (worker.retries < MAX_WORKER_RETRY_COUNT) {
-              worker.retries += 1;
-              workerPool.set(batchIndex, worker);
-            } else {
-              console.log(
-                `Batch ${batchIndex} failed after ${worker.retries} retries`,
-              );
-            }
-          }
-        } else {
-          console.error("Unable to find worker for batch index: ", batchIndex);
-          console.error("Worker pool: ", workerPool);
+        logger.log("batchIndex: " + batchIndex);
+        logger.log("status: " + status);
+
+        readBatchIdx = +1;
+        logger.log("readBatchIdx: " + readBatchIdx);
+        if (status === JobStatus.FAILURE) {
+          logger.log("Worker failed for batch index: " + batchIndex);
         }
       }
-      // console.log("handleJobStatusResponse: " + handleJobStatusResponse);
+
       if (handleJobStatusResponse) {
         await handleJobStatusResponse(messages);
       }
     }
-    // console.log("Donzo");
   }
 
   await writeToWorkerQueue({
@@ -526,7 +418,12 @@ async function writeToWorkerQueue({
   jobProperties,
   messageType,
 }: WriteToWorkerQueueInput) {
-  const messageBody: JobMessageBody = { batchIndex, data, jobProperties, messageType };
+  const messageBody: JobMessageBody = {
+    batchIndex,
+    data,
+    jobProperties,
+    messageType,
+  };
   sendMessageBatch({
     queueUrl,
     messages: [
@@ -548,10 +445,10 @@ async function readFromWorkerStatusQueue({
   let messages: Message[] = [];
   let retryCount = MAX_RETRY_COUNT;
 
+  // accumulate messages until we get an empty response
   do {
     const { response: message, acknowledgeMessageReceived } =
       await receiveMessage({ queueUrl });
-    // console.log("message: ", JSON.stringify(message));
     if (message && message.Messages) {
       messages = messages.concat(message.Messages);
       await acknowledgeMessageReceived();
@@ -573,96 +470,4 @@ async function readFromWorkerStatusQueue({
   );
 
   return messageBodies;
-}
-
-interface StartWorkerTasksInput {
-  uniqueId: string;
-  jobQueueUrl: string;
-  jobStatusQueueUrl: string;
-  workerRunCommand: string[];
-}
-async function startWorkerTasks({
-  uniqueId,
-  jobQueueUrl,
-  jobStatusQueueUrl,
-  workerRunCommand,
-}: StartWorkerTasksInput) {
-  const taskDefinition = await registerTaskDefinition({
-    family: `batch-processor-worker-task-${processId}`,
-    executionRoleArn: executionRoleArn,
-    taskRoleArn: taskRoleArn,
-    containerDefinitions: [
-      {
-        name: `batch-processor-worker-container-${processId}`,
-        image: workerImageName,
-        memory: 1024,
-        cpu: 1024,
-        command: workerRunCommand,
-        environment: [
-          {
-            name: JOB_QUEUE_URL,
-            value: jobQueueUrl,
-          },
-          {
-            name: JOB_STATUS_QUEUE_URL,
-            value: jobStatusQueueUrl,
-          },
-        ],
-      },
-    ],
-  });
-
-  if (
-    !taskDefinition.taskDefinition ||
-    !taskDefinition.taskDefinition.taskDefinitionArn
-  ) {
-    throw new Error(
-      "Unable to create worker task definition: " +
-        JSON.stringify(taskDefinition),
-    );
-  }
-
-  const createdService = await createService({
-    clusterArn,
-    serviceName: `batch-processor-worker-service-${processId}`,
-    taskDefinitionArn: taskDefinition.taskDefinition?.taskDefinitionArn,
-    desiredCount: batchParallelism,
-    securityGroups: [securityGroupArn],
-    subnets: [subnetArn],
-    assignPublicIp: AssignPublicIp.ENABLED,
-  });
-  // Create fargate service with desired count = batchParallelism
-
-  // We're only starting one at a time because we're less likely to get throttled
-  // by AWS. Also retries are easier to handle.
-  // do {
-  //   try {
-  //     const task = await runTask({
-  //       region,
-  //       clusterArn,
-  //       count: 1,
-  //       group,
-  //       securityGroupArns: [securityGroupArn],
-  //       subnetArns: [subnetArn],
-  //       taskDefinitionArn: workerTaskDefinitionArn,
-  //       containerName: `batch-worker-${processId}-${startedTasks.length}`,
-  //       environment: {
-  //         [JOB_QUEUE_URL]: jobQueueUrl,
-  //         [JOB_STATUS_QUEUE_URL]: jobStatusQueueUrl,
-  //       },
-  //       command: workerRunCommand,
-  //     });
-  //     startedTasks.push(task);
-  //   } catch (e) {
-  //     failCount += 1;
-  //     console.error("Encountered exception while starting task: ", e);
-  //     if (failCount === MAX_RETRY_COUNT) {
-  //       throw e;
-  //     }
-  //   }
-  // } while (
-  //   startedTasks.length < batchParallelism &&
-  //   failCount < MAX_RETRY_COUNT
-  // );
-  return createdService;
 }

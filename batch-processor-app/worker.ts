@@ -1,18 +1,15 @@
-import path from "path";
-import fs from "fs";
-
 import { nanoid } from "nanoid";
-import {
-  JOB_QUEUE_URL,
-  JOB_STATUS_QUEUE_URL,
-  PROCESS_ID,
-} from "../environment-variables";
+import { JOB_QUEUE_URL, JOB_STATUS_QUEUE_URL } from "../environment-variables";
 import {
   receiveMessage,
   sendMessageBatch,
 } from "../lib/sdk-drivers/sqs/sqs-io";
 import { validateEnvVar } from "../utils";
-import { JobMessageBody, JobMessageType, JobStatusMessageBody } from "./job-types";
+import {
+  JobMessageBody,
+  JobMessageType,
+  JobStatusMessageBody,
+} from "./job-types";
 import { LogBuffer } from "./log-buffer";
 import { writeToHeartbeatFile } from "./common";
 
@@ -21,7 +18,7 @@ const MAX_IDLE_COUNT = 1000;
 const jobQueueUrl = validateEnvVar(JOB_QUEUE_URL);
 const jobStatusQueueUrl = validateEnvVar(JOB_STATUS_QUEUE_URL);
 
-const log = new LogBuffer("worker");
+const logger = new LogBuffer("worker");
 
 interface WorkerProcessInput {
   handleProcessMessage: (
@@ -32,60 +29,82 @@ interface WorkerProcessInput {
 export async function workerProcessInput({
   handleProcessMessage,
 }: WorkerProcessInput) {
-  log.log("Worker starting");
+  logger.log("Worker starting");
 
   let timeOutCount = MAX_IDLE_COUNT;
+  let results: { messageType: JobMessageType } | null = null;
 
   while (timeOutCount > 0) {
-    log.log("worker timeOutCount: " + timeOutCount);
-    writeToHeartbeatFile();
+    logger.log("worker timeOutCount: " + timeOutCount);
 
-    const { response: message, acknowledgeMessageReceived } =
-      await receiveMessage({
-        queueUrl: jobQueueUrl,
-        maxNumberOfMessages: 1,
-        waitTimeSeconds: 10,
-        visibilityTimeout: 360,
-      });
-    if (message.Messages && message.Messages.length > 0) {
-      timeOutCount = MAX_IDLE_COUNT;
-      const payload: JobMessageBody = JSON.parse(
-        message.Messages[0].Body || "",
-      );
-      log.log("Worker message body: " + message.Messages[0].Body);
+    try {
+      writeToHeartbeatFile();
+      results = await processMessage(handleProcessMessage);
+    } catch (e) {
+      logger.log("Error processing message: " + e);
+    }
 
-      if (payload.messageType === JobMessageType.SHUTDOWN) {
-        log.log("Received shutdown message. Worker shutting down");
-        break;
-      }
+    if (results?.messageType === JobMessageType.SHUTDOWN) {
+      logger.log("Worker shutting down");
+      break;
+    }
 
-      const jobStatusMessage = await handleProcessMessage(payload);
-
-      const deleteResponse = await acknowledgeMessageReceived();
-      if ((deleteResponse?.Failed || []).length > 0) {
-        log.log("Failed to delete message: " + JSON.stringify(deleteResponse));
-      }
-
-      log.log(
-        "Worker sending job status message" + JSON.stringify(jobStatusMessage),
-      );
-
-      const response = await sendMessageBatch({
-        queueUrl: jobStatusQueueUrl,
-        messages: [
-          { messageBody: JSON.stringify(jobStatusMessage), id: nanoid() },
-        ],
-      });
-      // console.log("Sent message: " + JSON.stringify(response));
+    if (results) {
       timeOutCount = MAX_IDLE_COUNT;
     } else {
-      timeOutCount -= 1;
+      timeOutCount--;
     }
   }
 
   if (timeOutCount === 0) {
-    log.log("Worker timed out");
+    logger.log("Worker timed out");
   }
 
-  log.log("Worker stopping");
+  logger.log("Worker stopping");
+}
+
+export async function processMessage(
+  handleProcessMessage: (
+    message: JobMessageBody,
+  ) => Promise<JobStatusMessageBody>,
+): Promise<{ messageType: JobMessageType } | null> {
+  const { response: message, acknowledgeMessageReceived } =
+    await receiveMessage({
+      queueUrl: jobQueueUrl,
+      maxNumberOfMessages: 1,
+      waitTimeSeconds: 10,
+      visibilityTimeout: 360,
+    });
+  if (message.Messages && message.Messages.length > 0) {
+    const payload: JobMessageBody = JSON.parse(message.Messages[0].Body || "");
+    logger.log("Worker message body: " + message.Messages[0].Body);
+
+    if (payload.messageType === JobMessageType.SHUTDOWN) {
+      logger.log("Received shutdown message. Worker shutting down");
+      return { messageType: payload.messageType };
+    }
+
+    const jobStatusMessage = await handleProcessMessage(payload);
+
+    const deleteResponse = await acknowledgeMessageReceived();
+    if ((deleteResponse?.Failed || []).length > 0) {
+      logger.log("Failed to delete message: " + JSON.stringify(deleteResponse));
+    }
+
+    logger.log(
+      "Worker sending job status message" + JSON.stringify(jobStatusMessage),
+    );
+
+    const response = await sendMessageBatch({
+      queueUrl: jobStatusQueueUrl,
+      messages: [
+        { messageBody: JSON.stringify(jobStatusMessage), id: nanoid() },
+      ],
+    });
+
+    return {
+      messageType: payload.messageType,
+    };
+  }
+  return null;
 }
