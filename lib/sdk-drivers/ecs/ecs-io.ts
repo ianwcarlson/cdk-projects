@@ -136,10 +136,13 @@ export async function stopTasksInService({
   serviceName,
   clusterArn,
 }: StopTasksInServiceInput) {
-  const listTasksResponse = await listTasks({ serviceName, cluster: clusterArn });
+  const listTasksResponse = await listTasks({
+    serviceName,
+    cluster: clusterArn,
+  });
   console.log("listTasksResponse", JSON.stringify(listTasksResponse));
   const runningTasks = listTasksResponse.taskArns;
-  
+
   if (runningTasks) {
     for (const taskArn of runningTasks) {
       await sleep(300);
@@ -427,7 +430,8 @@ export async function listAllTaskDefinitions({
   const taskDefinitions = [];
 
   do {
-    const input: ListTaskDefinitionsCommandInput = { // ListTaskDefinitionsRequest
+    const input: ListTaskDefinitionsCommandInput = {
+      // ListTaskDefinitionsRequest
       // familyPrefix,
       // status: "ACTIVE" || "INACTIVE" || "DELETE_IN_PROGRESS",
       // sort: "ASC" || "DESC",

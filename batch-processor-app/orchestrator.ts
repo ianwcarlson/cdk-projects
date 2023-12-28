@@ -1,4 +1,5 @@
-import { nanoid } from "nanoid";
+
+import { v4 as uuidv4 } from "uuid";
 
 import {
   BATCH_PARALLELISM,
@@ -18,10 +19,7 @@ import {
   createService,
   deleteService,
   deleteTaskDefinitions as deleteTaskDefinitions,
-  listAllTaskDefinitions,
-  listTasks,
   registerTaskDefinition,
-  stopTask,
   stopTasksInService,
 } from "../lib/sdk-drivers/ecs/ecs-io";
 import {
@@ -35,7 +33,6 @@ import {
   getFulfilledValuesFromSettledPromises,
   groupArray,
   importRegionEnvVar,
-  sleep,
   validateEnvVar,
 } from "../utils";
 import { AssignPublicIp } from "@aws-sdk/client-ecs";
@@ -48,7 +45,6 @@ import {
 } from "./job-types";
 import { LogBuffer } from "./log-buffer";
 import { writeToHeartbeatFile } from "./common";
-import { run } from "node:test";
 
 const region = importRegionEnvVar();
 const clusterArn = validateEnvVar(ECS_CLUSTER_ARN);
@@ -68,7 +64,7 @@ const WorkerMemoryMB = 1024;
 const WorkerCpu = 512;
 
 const logger = new LogBuffer("orchestrator");
-process.on('exit', (code) => {
+process.on("exit", (code) => {
   logger.stopLogBuffer(code.toString());
 });
 
@@ -111,7 +107,10 @@ export async function orchestrator({
     });
 
     if (services.workerServiceArn) {
-      await stopTasksInService({ serviceName: services.workerServiceArn, clusterArn });
+      await stopTasksInService({
+        serviceName: services.workerServiceArn,
+        clusterArn,
+      });
     }
   } catch (e) {
     console.error("Encountered exception: ", e);
@@ -279,8 +278,6 @@ async function cleanUp({
   }
 
   writeToHeartbeatFile();
-
-  process.exit(0);
 }
 
 interface CreateQueuesInput {
@@ -428,7 +425,7 @@ async function writeBatches({
       jobProperties,
       messageType: JobMessageType.SHUTDOWN,
     });
-  })
+  });
 }
 
 interface WriteToWorkerQueueInput {
@@ -457,7 +454,7 @@ async function writeToWorkerQueue({
     queueUrl,
     messages: [
       {
-        id: nanoid(),
+        id: uuidv4(),
         messageBody: JSON.stringify(messageBody),
       },
     ],

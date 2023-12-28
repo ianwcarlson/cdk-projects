@@ -25,8 +25,7 @@ export async function sendMessageBatch({
   };
 
   const command = new SendMessageBatchCommand(input);
-  const response = await sqsClient.send(command);
-  return { rawResponse: response };
+  return sqsClient.send(command);
   // { // SendMessageResult
   //   MD5OfMessageBody: "STRING_VALUE",
   //   MD5OfMessageAttributes: "STRING_VALUE",

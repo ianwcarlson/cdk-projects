@@ -9,3 +9,4 @@ cdk.out
 
 build-out/
 docker/batch-processor-app
+batch-processor-app/heartbeat.json

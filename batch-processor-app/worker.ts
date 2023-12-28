@@ -19,7 +19,7 @@ const jobQueueUrl = validateEnvVar(JOB_QUEUE_URL);
 const jobStatusQueueUrl = validateEnvVar(JOB_STATUS_QUEUE_URL);
 
 const logger = new LogBuffer("worker");
-process.on('exit', (code) => {
+process.on("exit", (code) => {
   logger.stopLogBuffer(code.toString());
 });
 
@@ -98,7 +98,7 @@ export async function processMessage(
       "Worker sending job status message" + JSON.stringify(jobStatusMessage),
     );
 
-    const response = await sendMessageBatch({
+    await sendMessageBatch({
       queueUrl: jobStatusQueueUrl,
       messages: [
         { messageBody: JSON.stringify(jobStatusMessage), id: nanoid() },
