@@ -1,4 +1,3 @@
-
 import { v4 as uuidv4 } from "uuid";
 
 import {
@@ -350,7 +349,6 @@ async function writeBatches({
   let writeBatchIdx = 0;
   let readBatchIdx = 0;
   let readStallCounter = MAX_READ_STALL_COUNT;
-  const batchParallelism = 6;
   const groupedInputData = groupArray(inputData, 10);
   const numBatches = groupedInputData.length;
   logger.log("numBatches: " + numBatches);
@@ -418,6 +416,7 @@ async function writeBatches({
   }
 
   Array.from(new Array(batchParallelism)).forEach(async () => {
+    console.log("Sending shutdown message to worker queue");
     await writeToWorkerQueue({
       queueUrl: workerQueueUrl,
       batchIndex: -1,
@@ -477,7 +476,7 @@ async function readFromWorkerStatusQueue({
   do {
     const { response: message, acknowledgeMessageReceived } =
       await receiveMessage({ queueUrl, waitTimeSeconds: 1 });
-    if (message && message.Messages) {
+    if (message && message.Messages && message.Messages.length > 0) {
       messages = messages.concat(message.Messages);
       await acknowledgeMessageReceived();
       retryCount -= 1;
