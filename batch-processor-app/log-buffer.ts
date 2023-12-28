@@ -72,12 +72,15 @@ export class LogBuffer {
 
     this.bufferSize = 0;
 
-    // We don't await to avoid blocking the main thread
+    // We don't await to avoid blocking the main thread because io errors
+    // aren't critical failures
     putLogEvents({
       logGroupName: LogGroupName,
       logStreamName: this.logStreamName,
       logEvents: this.logBuffer,
     });
+
+    // Could do other stuff here too
 
     this.logBuffer = [];
 

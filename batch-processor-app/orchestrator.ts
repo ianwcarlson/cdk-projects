@@ -466,7 +466,7 @@ async function readFromWorkerStatusQueue({
   // accumulate messages until we get an empty response
   do {
     const { response: message, acknowledgeMessageReceived } =
-      await receiveMessage({ queueUrl });
+      await receiveMessage({ queueUrl, waitTimeSeconds: 1 });
     if (message && message.Messages) {
       messages = messages.concat(message.Messages);
       await acknowledgeMessageReceived();
