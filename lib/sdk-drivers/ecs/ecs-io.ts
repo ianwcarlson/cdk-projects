@@ -19,6 +19,8 @@ import {
   DescribeServicesCommand,
   DeleteTaskDefinitionsCommand,
   ListTaskDefinitionsCommandInput,
+  ListTasksCommand,
+  ListTasksCommandInput,
 } from "@aws-sdk/client-ecs";
 import { groupArray, importRegionEnvVar, sleep } from "../../../utils";
 import { DeleteQueueCommand } from "@aws-sdk/client-sqs";
@@ -104,28 +106,49 @@ export async function runTask({
 }
 
 interface StopTaskInput {
-  region: string;
   taskArn: string;
   clusterArn?: string;
   reason?: string;
 }
 
 export async function stopTask({
-  region,
   taskArn,
   reason = "",
   clusterArn,
 }: StopTaskInput) {
-  const client = new ECSClient({ region });
   const input = {
     task: taskArn,
     reason,
     cluster: clusterArn,
   };
   const command = new StopTaskCommand(input);
-  const response = await client.send(command);
+  const response = await ecsClient.send(command);
   console.log("Stop task response: " + JSON.stringify(response));
   return response;
+}
+
+interface StopTasksInServiceInput {
+  serviceName: string;
+  clusterArn: string;
+}
+
+export async function stopTasksInService({
+  serviceName,
+  clusterArn,
+}: StopTasksInServiceInput) {
+  const listTasksResponse = await listTasks({ serviceName, cluster: clusterArn });
+  console.log("listTasksResponse", JSON.stringify(listTasksResponse));
+  const runningTasks = listTasksResponse.taskArns;
+  
+  if (runningTasks) {
+    for (const taskArn of runningTasks) {
+      await sleep(300);
+      console.log("Stopping task " + taskArn);
+      // Even though the orchestrator sends the shutdown message, stopping the
+      // ecs tasks will ensure that the worker tasks actually stop.
+      await stopTask({ taskArn, clusterArn, reason: "Work completed" });
+    }
+  }
 }
 
 export async function listTaskDefinitions({
@@ -486,4 +509,9 @@ export async function findServiceByName({
   }
 
   return null;
+}
+
+export async function listTasks(props: ListTasksCommandInput) {
+  const command = new ListTasksCommand(props);
+  return ecsClient.send(command);
 }

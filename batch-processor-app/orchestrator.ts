@@ -19,7 +19,10 @@ import {
   deleteService,
   deleteTaskDefinitions as deleteTaskDefinitions,
   listAllTaskDefinitions,
+  listTasks,
   registerTaskDefinition,
+  stopTask,
+  stopTasksInService,
 } from "../lib/sdk-drivers/ecs/ecs-io";
 import {
   createQueue,
@@ -45,6 +48,7 @@ import {
 } from "./job-types";
 import { LogBuffer } from "./log-buffer";
 import { writeToHeartbeatFile } from "./common";
+import { run } from "node:test";
 
 const region = importRegionEnvVar();
 const clusterArn = validateEnvVar(ECS_CLUSTER_ARN);
@@ -105,6 +109,10 @@ export async function orchestrator({
       jobProperties: {},
       handleJobStatusResponse,
     });
+
+    if (services.workerServiceArn) {
+      await stopTasksInService({ serviceName: services.workerServiceArn, clusterArn });
+    }
   } catch (e) {
     console.error("Encountered exception: ", e);
   } finally {
@@ -230,6 +238,7 @@ async function setupPipeline(workerRunCommand: string[]) {
   return {
     queueUrls: { jobQueueUrl, jobStatusQueueUrl },
     workerServiceArn: createdService.service?.serviceArn,
+    workerServiceName: createdService.service?.serviceName,
     taskDefinitionArn,
   };
 }
@@ -411,13 +420,15 @@ async function writeBatches({
     }
   }
 
-  await writeToWorkerQueue({
-    queueUrl: workerQueueUrl,
-    batchIndex: -1,
-    data: [],
-    jobProperties,
-    messageType: JobMessageType.SHUTDOWN,
-  });
+  Array.from(new Array(batchParallelism)).forEach(async () => {
+    await writeToWorkerQueue({
+      queueUrl: workerQueueUrl,
+      batchIndex: -1,
+      data: [],
+      jobProperties,
+      messageType: JobMessageType.SHUTDOWN,
+    });
+  })
 }
 
 interface WriteToWorkerQueueInput {
@@ -463,7 +474,9 @@ async function readFromWorkerStatusQueue({
   let messages: Message[] = [];
   let retryCount = MAX_RETRY_COUNT;
 
-  // accumulate messages until we get an empty response
+  // accumulate messages until we get an empty response. Don't
+  // wait that long because we want to stuff the job queue as
+  // fast as possible.
   do {
     const { response: message, acknowledgeMessageReceived } =
       await receiveMessage({ queueUrl, waitTimeSeconds: 1 });
