@@ -1,4 +1,4 @@
-import { nanoid } from "nanoid";
+import { v4 as uuidv4 } from "uuid";
 import { JOB_QUEUE_URL, JOB_STATUS_QUEUE_URL } from "../environment-variables";
 import {
   receiveMessage,
@@ -29,7 +29,7 @@ interface WorkerProcessInput {
   ) => Promise<JobStatusMessageBody>;
 }
 
-export async function workerProcessInput({
+export async function workerProcess({
   handleProcessMessage,
 }: WorkerProcessInput) {
   logger.log("Worker starting");
@@ -101,7 +101,7 @@ export async function processMessage(
     await sendMessageBatch({
       queueUrl: jobStatusQueueUrl,
       messages: [
-        { messageBody: JSON.stringify(jobStatusMessage), id: nanoid() },
+        { messageBody: JSON.stringify(jobStatusMessage), id: uuidv4() },
       ],
     });
 

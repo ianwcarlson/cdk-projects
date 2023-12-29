@@ -13,7 +13,7 @@ import * as EcsIO from "../lib/sdk-drivers/ecs/ecs-io";
 import * as SqsIO from "../lib/sdk-drivers/sqs/sqs-io";
 import * as CloudWatchLogsIO from "../lib/sdk-drivers/cloudwatch/cloudwatch-io";
 
-const BatchParallelism = 10
+const BatchParallelism = 10;
 
 process.env[REGION] = "REGION";
 process.env[ECS_CLUSTER_ARN] = "CLUSTER_ARN";
@@ -39,15 +39,6 @@ async function fetchInputData() {
 const QueueUrl = "https://queue-url";
 
 test("Verify the orchestrator example", async () => {
-  const createLogGroupSpy = jest
-    .spyOn(CloudWatchLogsIO, "createLogGroup")
-    .mockImplementation(() =>
-      Promise.resolve({
-        $metadata: {},
-        logGroupArn:
-          "arn:aws:logs:us-east-1:123456789012:log-group:my-log-group",
-      }),
-    );
   const createLogStreamSpy = jest
     .spyOn(CloudWatchLogsIO, "createLogStream")
     .mockImplementation(() =>
@@ -149,15 +140,13 @@ test("Verify the orchestrator example", async () => {
       }),
     );
 
-  const deleteMessageBatchSpy = jest
-    .spyOn(SqsIO, "deleteMessageBatch")
-    .mockImplementation(() =>
-      Promise.resolve({
-        $metadata: {},
-        Successful: [],
-        Failed: [],
-      }),
-    );
+  jest.spyOn(SqsIO, "deleteMessageBatch").mockImplementation(() =>
+    Promise.resolve({
+      $metadata: {},
+      Successful: [],
+      Failed: [],
+    }),
+  );
 
   const registerTaskDefinitionSpy = jest
     .spyOn(EcsIO, "registerTaskDefinition")

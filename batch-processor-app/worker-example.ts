@@ -1,6 +1,6 @@
 import { JobMessageBody, JobStatus, JobStatusMessageBody } from "./job-types";
 import { LogBuffer } from "./log-buffer";
-import { workerProcessInput } from "./worker";
+import { workerProcess } from "./worker";
 
 const log = new LogBuffer("worker");
 
@@ -19,4 +19,4 @@ async function handleProcessMessage(
   };
 }
 
-workerProcessInput({ handleProcessMessage }).then();
+workerProcess({ handleProcessMessage }).then();
