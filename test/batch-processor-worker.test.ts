@@ -135,52 +135,32 @@ test("Verify the orchestrator example", async () => {
   expect(sendMessageBatchSpy).toHaveBeenCalledTimes(3);
   expect(receiveMessageSpy).toHaveBeenCalledTimes(4);
 
-  // expect(sendMessageBatchSpy).toHaveBeenNthCalledWith(
-  //   1,
-  //   expect.objectContaining({
-  //     queueUrl: QueueUrl,
-  //     messages: [
-  //       expect.objectContaining({
-  //         messageBody: JSON.stringify({
-  //           batchIndex: 0,
-  //           data: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
-  //           jobProperties: {},
-  //           messageType: JobMessageType.DATA,
-  //         }),
-  //       }),
-  //     ],
-  //   }),
-  // );
-  // expect(sendMessageBatchSpy).toHaveBeenNthCalledWith(
-  //   2,
-  //   expect.objectContaining({
-  //     queueUrl: QueueUrl,
-  //     messages: [
-  //       expect.objectContaining({
-  //         messageBody: JSON.stringify({
-  //           batchIndex: 1,
-  //           data: [10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
-  //           jobProperties: {},
-  //           messageType: JobMessageType.DATA,
-  //         }),
-  //       }),
-  //     ],
-  //   }),
-  // );
-  // expect(sendMessageBatchSpy).toHaveBeenNthCalledWith(
-  //   3,
-  //   expect.objectContaining({
-  //     queueUrl: QueueUrl,
-  //     messages: [
-  //       expect.objectContaining({
-  //         messageBody: JSON.stringify({
-  //           batchIndex: 2,
-  //           data: [20],
-  //           jobProperties: {},
-  //           messageType: JobMessageType.DATA,
-  //         }),
-  //       }),
-  //     ],
-  //   }),
-  // );
+  expect(handleProcessMessage).toHaveBeenCalledTimes(3);
+  expect(handleProcessMessage).toHaveNthReturnedWith(
+    1,
+    Promise.resolve({
+      batchIndex: 0,
+      status: JobStatus.SUCCESS,
+      processedData: [],
+      jobProperties: {},
+    }),
+  );
+  expect(handleProcessMessage).toHaveNthReturnedWith(
+    2,
+    Promise.resolve({
+      batchIndex: 1,
+      status: JobStatus.SUCCESS,
+      processedData: [],
+      jobProperties: {},
+    }),
+  );
+  expect(handleProcessMessage).toHaveNthReturnedWith(
+    3,
+    Promise.resolve({
+      batchIndex: 2,
+      status: JobStatus.SUCCESS,
+      processedData: [],
+      jobProperties: {},
+    }),
+  );
 });
