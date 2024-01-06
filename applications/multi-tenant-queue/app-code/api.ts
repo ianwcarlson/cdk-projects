@@ -47,5 +47,7 @@ app.use(
 
 app.use("/user", userRoutes);
 
-http.createServer(app).listen(port);
-console.log(`Listening on port ${port}`);
+// http.createServer(app).listen(port);
+// console.log(`Listening on port ${port}`);
+
+export { app };
