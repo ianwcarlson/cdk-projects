@@ -1,9 +1,7 @@
-import { PROCESS_ID } from "../environment-variables";
 import {
   createLogStream,
   putLogEvents,
-} from "../lib/sdk-drivers/cloudwatch/cloudwatch-io";
-import { validateEnvVar } from "../utils";
+} from "../../lib/sdk-drivers/cloudwatch/cloudwatch-io";
 
 const processId = Date.now().toString();
 

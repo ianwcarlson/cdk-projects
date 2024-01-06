@@ -25,12 +25,12 @@ process.env[ECS_TASK_ROLE_ARN] = "TASK_ROLE_ARN";
 process.env[WORKER_IMAGE_NAME] = "WORKER_IMAGE_NAME";
 process.env[LOG_GROUP_NAME] = "LOG_GROUP_NAME";
 
-import { orchestrator } from "../batch-processor-app/orchestrator";
+import { orchestrator } from "../applications/batch-processor/orchestrator";
 import {
   JobMessageType,
   JobStatus,
   JobStatusMessageBody,
-} from "../batch-processor-app/job-types";
+} from "../applications/batch-processor/job-types";
 
 async function fetchInputData() {
   return Array.from(new Array(21)).map((_, i) => i);

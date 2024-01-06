@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import "source-map-support/register";
 import * as cdk from "aws-cdk-lib";
-import { BatchProcessorStack } from "../lib/batch-processor-stack";
+import { BatchProcessorStack } from "../applications/batch-processor/batch-processor-stack";
 import { validateEnvVar } from "../utils";
 import { ACCOUNT, REGION } from "../environment-variables";
 

@@ -5,7 +5,7 @@
     "cdk-top": "bin/cdk-top.ts"
   },
   "scripts": {
-    "build": "esbuild ./batch-processor-app/orchestrator-example.ts ./batch-processor-app/worker-example.ts --sourcemap --bundle --platform=node --outdir=./docker/batch-processor-app/",
+    "build": "esbuild ./applications/batch-processor/orchestrator-example.ts ./applications/batch-processor/worker-example.ts --sourcemap --bundle --platform=node --outdir=./docker/batch-processor-app/",
     "build-docker": "cd docker && bash ./build.sh",
     "publish-docker": "rm -r docker/batch-processor-app && npm run build && cd docker && bash ./build.sh && bash ./publish.sh",
     "watch": "tsc -w",
@@ -40,6 +40,8 @@
     "@aws-sdk/client-sqs": "^3.470.0",
     "aws-cdk-lib": "2.114.1",
     "constructs": "^10.0.0",
+    "express": "^4.18.2",
+    "express-openapi-validator": "^5.1.2",
     "lodash": "^4.17.21",
     "source-map-support": "^0.5.21",
     "uuid": "^9.0.1"

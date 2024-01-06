@@ -1,10 +1,13 @@
 import { v4 as uuidv4 } from "uuid";
-import { JOB_QUEUE_URL, JOB_STATUS_QUEUE_URL } from "../environment-variables";
+import {
+  JOB_QUEUE_URL,
+  JOB_STATUS_QUEUE_URL,
+} from "../../environment-variables";
 import {
   receiveMessage,
   sendMessageBatch,
-} from "../lib/sdk-drivers/sqs/sqs-io";
-import { validateEnvVar } from "../utils";
+} from "../../lib/sdk-drivers/sqs/sqs-io";
+import { validateEnvVar } from "../../utils";
 import {
   JobMessageBody,
   JobMessageType,

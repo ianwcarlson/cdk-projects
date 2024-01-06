@@ -13,27 +13,27 @@ import {
   PROCESS_ID,
   REGION,
   WORKER_IMAGE_NAME,
-} from "../environment-variables";
+} from "../../environment-variables";
 import {
   createService,
   deleteService,
   deleteTaskDefinitions as deleteTaskDefinitions,
   registerTaskDefinition,
   stopTasksInService,
-} from "../lib/sdk-drivers/ecs/ecs-io";
+} from "../../lib/sdk-drivers/ecs/ecs-io";
 import {
   createQueue,
   deleteQueue,
   receiveMessage,
   sendMessageBatch,
-} from "../lib/sdk-drivers/sqs/sqs-io";
+} from "../../lib/sdk-drivers/sqs/sqs-io";
 import {
   getFailedValuesFromSettledPromises,
   getFulfilledValuesFromSettledPromises,
   groupArray,
   importRegionEnvVar,
   validateEnvVar,
-} from "../utils";
+} from "../../utils";
 import { AssignPublicIp } from "@aws-sdk/client-ecs";
 import { CreateQueueCommandOutput, Message } from "@aws-sdk/client-sqs";
 import {

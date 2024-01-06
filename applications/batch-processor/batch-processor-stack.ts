@@ -8,11 +8,11 @@ import {
   Vpc,
 } from "aws-cdk-lib/aws-ec2";
 import { Construct } from "constructs";
-import { validateEnvVar } from "../utils";
-import { ACCOUNT, INSTANCE_ID, REGION } from "../environment-variables";
-import { FargateBaseStack } from "./ecs/fargate-base";
-import { FargateStack } from "./ecs/fargate";
-import { BatchProcessorLambdaTop } from "./lambda/lambda-top";
+import { validateEnvVar } from "../../utils";
+import { ACCOUNT, INSTANCE_ID, REGION } from "../../environment-variables";
+import { FargateBaseStack } from "../../lib/ecs/fargate-base";
+import { FargateStack } from "../../lib/ecs/fargate";
+import { BatchProcessorLambdaTop } from "../../lib/lambda/lambda-top";
 
 const region = validateEnvVar(REGION);
 const account = validateEnvVar(ACCOUNT);

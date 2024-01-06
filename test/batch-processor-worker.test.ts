@@ -1,17 +1,8 @@
 import {
-  BATCH_PARALLELISM,
-  ECS_CLUSTER_ARN,
-  ECS_EXECUTION_ROLE_ARN,
-  ECS_SECURITY_GROUP_ARN,
-  ECS_SUBNET_ARN,
-  ECS_TASK_ROLE_ARN,
   JOB_QUEUE_URL,
   JOB_STATUS_QUEUE_URL,
-  LOG_GROUP_NAME,
   REGION,
-  WORKER_IMAGE_NAME,
 } from "../environment-variables";
-import * as EcsIO from "../lib/sdk-drivers/ecs/ecs-io";
 import * as SqsIO from "../lib/sdk-drivers/sqs/sqs-io";
 import * as CloudWatchLogsIO from "../lib/sdk-drivers/cloudwatch/cloudwatch-io";
 
@@ -21,14 +12,14 @@ process.env[REGION] = "REGION";
 process.env[JOB_QUEUE_URL] = "JOB_QUEUE_URL";
 process.env[JOB_STATUS_QUEUE_URL] = "JOB_STATUS_QUEUE_URL";
 
-import { workerProcess } from "../batch-processor-app/worker";
+import { workerProcess } from "../applications/batch-processor/worker";
 import {
   JobMessageBody,
   JobMessageType,
   JobStatus,
-} from "../batch-processor-app/job-types";
+} from "../applications/batch-processor/job-types";
 
-const handleProcessMessage = jest.fn(x => {
+const handleProcessMessage = jest.fn((x) => {
   return Promise.resolve({
     batchIndex: -1,
     status: JobStatus.SUCCESS,
