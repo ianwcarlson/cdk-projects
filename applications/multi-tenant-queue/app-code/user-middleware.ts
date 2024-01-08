@@ -9,6 +9,7 @@ export function addUserContext() {
     res: Response,
     next: NextFunction,
   ) {
+    // Not sure how to deal with mutating the request object in Typescript
     // @ts-ignore
     req.user = {
       id: "123",

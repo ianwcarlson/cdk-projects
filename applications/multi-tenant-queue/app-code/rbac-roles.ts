@@ -1,5 +1,4 @@
 import { NextFunction, Request, Response } from "express";
-import { RequestWithUser } from "./common-types";
 
 export enum RbacRoles {
   Read = "Read",
@@ -7,14 +6,20 @@ export enum RbacRoles {
   Admin = "Admin",
 }
 
+const enableRbac = process.env.ENABLE_RBAC === "true";
+
 export const verifyRole = (allowedRoles: RbacRoles[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
-    // Typescript really doens't like express's mutation. There's got to be
-    // a better way to do this.
+    // Typescript expects the request object to always be the same shape
+    // for all middleware, but we need to mutate the request object to
+    // add the user context among other things.
     // @ts-ignore
     const userRoles: RbacRoles[] = req.user.roles;
 
-    if (!userRoles.some((r: RbacRoles) => allowedRoles.includes(r))) {
+    if (
+      enableRbac &&
+      !userRoles.some((r: RbacRoles) => allowedRoles.includes(r))
+    ) {
       res
         .status(403)
         .send(
@@ -25,11 +30,3 @@ export const verifyRole = (allowedRoles: RbacRoles[]) => {
     }
   };
 };
-
-// export function verifyRole(role: string): RbacRoles {
-//   if (Object.values(RbacRoles).includes(role as RbacRoles)) {
-//     return role as RbacRoles;
-//   } else {
-//     throw new Error(`Invalid role: ${role}`);
-//   }
-// }
