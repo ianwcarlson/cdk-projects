@@ -1,0 +1,311 @@
+openapi: "3.0.0"
+info:
+  title: Simple API overview
+  version: 2.0.0
+paths:
+  /user/{userId}:
+    get:
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: Unique id of user
+          schema:
+            type : integer
+            format: int64
+            minimum: 1
+      responses:
+        '200':
+          description: |-
+            200 response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+        '400':
+          description: Bad request
+        '403':
+          description: Unauthorized
+    delete:
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: Unique id of user
+          schema:
+            type : integer
+            format: int64
+            minimum: 1
+      responses:
+        '200':
+          description: |-
+            200 response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+        '400':
+          description: Bad request
+        '403':
+          description: Unauthorized
+  /user:  
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/User'
+      responses:
+        '200':
+          description: |-
+            200 response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+        '400':
+          description: Bad request
+        '403':
+          description: Unauthorized
+  /tenant:
+    get:
+      description: List tenants using pagination
+      parameters:
+        - name: nextToken
+          in: query
+          required: false
+          description: Next token
+          schema:
+            type : string
+        - name: size
+          in: query
+          required: false
+          description: Size of the page
+          schema:
+            type : integer
+            format: int64
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: |-
+            200 response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nextToken:
+                    type: string
+                  tenantIds:
+                    type: array
+                    items:
+                      type: string
+        '400':
+          description: Bad request
+        '403':
+          description: Unauthorized
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tenantId:
+                  type: string
+      responses:
+        '200':
+          description: |-
+            200 response
+        '400':
+          description: Bad request
+        '403':
+          description: Unauthorized
+  /tenant/flush:
+    post:
+      description: Flush all tenant queues. Required roles&#58; Admin
+      responses:
+        '200':
+          description: |-
+            200 response
+        '400':
+          description: Bad request
+        '403':
+          description: Unauthorized
+  /tenant/{tenantId}:
+    get:
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          description: Verify tenant exists
+          schema:
+            type : string
+      responses:
+        '200':
+          description: |-
+            200 response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+        '400':
+          description: Bad request
+        '403':
+          description: Unauthorized
+    delete:
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          description: Delete tenant by id
+          schema:
+            type : string
+      responses:
+        '200':
+          description: |-
+            200 response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+        '400':
+          description: Bad request
+        '403':
+          description: Unauthorized
+  /tenant/{tenantId}/flush:
+    post:
+      description: Flush tenant queues
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          description: Flush tenant queue
+          schema:
+            type : string
+      responses:
+        '200':
+          description: |-
+            200 response
+        '400':
+          description: Bad request
+        '403':
+          description: Unauthorized
+  /send-message:
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - tenantId
+                - messages
+              properties:
+                tenantId:
+                  type: string
+                highPriority:
+                  type: boolean
+                messages:
+                  type: array
+                  maxItems: 10
+                  minItems: 0
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: |-
+            200 response
+        '400':
+          description: Bad request
+        '403':
+          description: Unauthorized
+  /receive-message:
+    get:
+      description: Read message from multi-tenant queue
+      parameters:
+        - name: waitSeconds
+          in: query
+          required: true
+          description: Get messages for tenant
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 20
+      responses:
+        '200':
+          description: |-
+            200 response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nextToken:
+                    type: string
+                  messages:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        messageHandle:
+                          type: string
+                        message:
+                          type: string
+        '400':
+          description: Bad request
+        '403':
+          description: Unauthorized
+  /acknowledge-message:
+    post:
+      description: Acknowledge messages were successfully processed. If not successful, the message will be available again after the visibility timeout expires. Please note, not acknowledging messages will result in buffer overflow and the queue will eventually stop taking persisting additional messages. Required roles&#58; Admin, Write, Read
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              maxItems: 10
+              minItems: 0
+              items:
+                type: string
+                description: Message handle received from /receive-message call
+      responses:
+        '200':
+          description: |-
+            200 response
+        '400':
+          description: Bad request
+        '403':
+          description: Unauthorized
+components:
+  schemas:
+    User:
+      type: object
+      required:
+        - username
+        - email
+      properties:
+        username:
+          type: string
+        email:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
