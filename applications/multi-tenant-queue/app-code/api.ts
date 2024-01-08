@@ -4,6 +4,9 @@ import http from "http";
 import * as OpenApiValidator from "express-openapi-validator";
 
 import userRoutes from "./user-routes";
+import { add } from "lodash";
+import { addUserContext } from "./user-middleware";
+import { MiddlewareError } from "./common-types";
 
 const app = express();
 
@@ -29,12 +32,6 @@ app.use(
   }),
 );
 
-interface MiddlewareError {
-  status?: number;
-  message?: string;
-  errors?: any[];
-}
-
 app.use(
   (err: MiddlewareError, req: Request, res: Response, next: NextFunction) => {
     // format errors
@@ -44,6 +41,8 @@ app.use(
     });
   },
 );
+
+app.use(addUserContext);
 
 app.use("/user", userRoutes);
 
