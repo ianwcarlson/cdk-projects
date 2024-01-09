@@ -1,21 +1,15 @@
-import path from "path";
-
 import {
   Duration,
   Size,
   NestedStack,
   StackProps,
   aws_iam,
-  aws_lambda,
-  aws_sqs,
-  aws_ssm,
 } from "aws-cdk-lib";
 import { NodejsFunction, SourceMapMode } from "aws-cdk-lib/aws-lambda-nodejs";
 import { RetentionDays } from "aws-cdk-lib/aws-logs";
 import { Construct } from "constructs";
 import { REGION } from "../../environment-variables";
 import { ManagedPolicy } from "aws-cdk-lib/aws-iam";
-import { SqsEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
 
 interface CreateLambdaInput {
   id: string;
@@ -88,6 +82,7 @@ export class MultiTenantQueueLambdaTop extends NestedStack {
               "sqs:sendmessage",
               "kms:Encrypt",
               "kms:Decrypt",
+              "logs:Put*",
             ],
             principals: [],
             resources: [`*`],
@@ -145,6 +140,9 @@ export class MultiTenantQueueLambdaTop extends NestedStack {
           sourceMap: true, // include source map, defaults to false
           sourceMapMode: SourceMapMode.INLINE, // defaults to SourceMapMode.DEFAULT
           sourcesContent: true,
+          loader: { // Include the api spec in the bundle
+            '.yaml': 'file',
+          },
         },
       });
     };

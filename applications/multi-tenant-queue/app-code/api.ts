@@ -1,10 +1,11 @@
 import express, { NextFunction, Request, Response } from "express";
 import path from "path";
-import http from "http";
 import * as OpenApiValidator from "express-openapi-validator";
 
+// @ts-ignore
+import pathToSpec from "./api-spec.yaml";
+
 import userRoutes from "./user-routes";
-import { add } from "lodash";
 import { addUserContext } from "./user-middleware";
 import { MiddlewareError } from "./common-types";
 
@@ -21,14 +22,14 @@ app.use(express.text());
 app.use(express.urlencoded({ extended: false }));
 
 // 3. (optionally) Serve the OpenAPI spec
-const spec = path.join(__dirname, "api.yaml");
-app.use("/spec", express.static(spec));
+// const spec = pathToSpec;
+app.use("/spec", express.static(pathToSpec));
 
 // 4. Install the OpenApiValidator onto your express app
 app.use(
   OpenApiValidator.middleware({
-    apiSpec: path.resolve(__dirname, "api.yaml"),
-    validateResponses: true, // <-- to validate responses
+    apiSpec: pathToSpec,
+    validateRequests: true,
   }),
 );
 
@@ -42,9 +43,11 @@ app.use(
   },
 );
 
-app.use(addUserContext);
+// app.use(addUserContext);
 
 app.use("/user", userRoutes);
+
+console.log("WTF!!!!");
 
 // http.createServer(app).listen(port);
 // console.log(`Listening on port ${port}`);

@@ -8,6 +8,8 @@ import { Construct } from "constructs";
 import { validateEnvVar } from "../../utils";
 import { ACCOUNT, INSTANCE_ID, REGION } from "../../environment-variables";
 import { MultiTenantQueueLambdaTop } from "./lambda-top";
+import { HttpLambdaIntegration } from "aws-cdk-lib/aws-apigatewayv2-integrations";
+import { HttpApi, HttpMethod } from "aws-cdk-lib/aws-apigatewayv2";
 
 const region = validateEnvVar(REGION);
 const account = validateEnvVar(ACCOUNT);
@@ -21,9 +23,9 @@ export class MultiTenantQueueStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    new MultiTenantQueueLambdaTop(
+    const apiDefaultHandlerLambda = new MultiTenantQueueLambdaTop(
       this,
-      `multi-tenant-queue-lambda-top-${instanceId}`,
+      `MultiTenantQueueLambdaTop-${instanceId}`,
       {
         env: {
           region,
@@ -31,5 +33,29 @@ export class MultiTenantQueueStack extends cdk.Stack {
         },
       },
     );
+
+    const apiIntegration = new HttpLambdaIntegration(
+      "ApiDefaultHandlerLambda",
+      apiDefaultHandlerLambda.lambdas.apiDefaultHandler,
+    );
+
+    const httpApi = new HttpApi(this, "HttpApi");
+
+    // We need to add each path separately, even though they're mapped to the same lambda,
+    // because api-gateway won't parse the path params correctly otherwise.
+    httpApi.addRoutes({
+      path: "/user",
+      methods: [
+        HttpMethod.ANY,
+      ],
+      integration: apiIntegration,
+    });
+    httpApi.addRoutes({
+      path: "/user/{userId}",
+      methods: [
+        HttpMethod.ANY,
+      ],
+      integration: apiIntegration,
+    });
   }
 }
