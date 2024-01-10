@@ -207,7 +207,7 @@ paths:
           description: Bad request
         '403':
           description: Unauthorized
-  /send-message:
+  /message/send:
     post:
       requestBody:
         content:
@@ -236,7 +236,7 @@ paths:
           description: Bad request
         '403':
           description: Unauthorized
-  /receive-message:
+  /message/receive:
     get:
       description: Read message from multi-tenant queue
       parameters:
@@ -272,7 +272,7 @@ paths:
           description: Bad request
         '403':
           description: Unauthorized
-  /acknowledge-message:
+  /message/acknowledge:
     post:
       description: Acknowledge messages were successfully processed. If not successful, the message will be available again after the visibility timeout expires. Please note, not acknowledging messages will result in buffer overflow and the queue will eventually stop taking persisting additional messages. Required roles&#58; Admin, Write, Read
       requestBody:

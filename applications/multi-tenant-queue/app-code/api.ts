@@ -6,6 +6,8 @@ import * as OpenApiValidator from "express-openapi-validator";
 import pathToSpec from "./api-spec.yaml";
 
 import userRoutes from "./user-routes";
+import tenantRoutes from "./tenant-routes";
+import messageRoutes from "./message-routes";
 import { addUserContext } from "./user-middleware";
 import { MiddlewareError } from "./common-types";
 
@@ -46,6 +48,8 @@ app.use(
 app.use(addUserContext);
 
 app.use("/user", userRoutes);
+app.use("/tenant", tenantRoutes);
+app.use("/message", messageRoutes);
 
 // http.createServer(app).listen(port);
 // console.log(`Listening on port ${port}`);

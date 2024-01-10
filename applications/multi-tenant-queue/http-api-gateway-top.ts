@@ -28,14 +28,14 @@ export class HttpApiGatewayTop extends NestedStack {
       "/tenant/flush",
       "/tenant/{tenantId}",
       "/tenant/{tenantId}/flush",
-      "/send-message",
-      "/receive-message",
-      "/acknowledge-message",
-    ]
+      "/message/send",
+      "/message/receive",
+      "/message/acknowledge",
+    ];
 
     // We need to add each path separately, even though they're mapped to the same lambda,
     // because api-gateway won't parse the path params correctly otherwise.
-    
+
     for (const path of paths) {
       httpApi.addRoutes({
         path,

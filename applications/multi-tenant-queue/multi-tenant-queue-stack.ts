@@ -8,9 +8,8 @@ import { Construct } from "constructs";
 import { validateEnvVar } from "../../utils";
 import { ACCOUNT, INSTANCE_ID, REGION } from "../../environment-variables";
 import { MultiTenantQueueLambdaTop } from "./lambda-top";
-import { HttpLambdaIntegration } from "aws-cdk-lib/aws-apigatewayv2-integrations";
-import { HttpApi, HttpMethod } from "aws-cdk-lib/aws-apigatewayv2";
 import { HttpApiGatewayTop } from "./http-api-gateway-top";
+import { FifoThroughputLimit, Queue } from "aws-cdk-lib/aws-sqs";
 
 const region = validateEnvVar(REGION);
 const account = validateEnvVar(ACCOUNT);
@@ -23,6 +22,12 @@ export class MultiTenantQueueStack extends cdk.Stack {
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
+
+    const roundRobinQueue = new Queue(this, `Queue-${instanceId}`, {
+      queueName: `RoundRobinQueue-${instanceId}`,
+      fifo: true,
+      fifoThroughputLimit: FifoThroughputLimit.PER_MESSAGE_GROUP_ID
+    });
 
     const multiTenantQueueLambdaTop = new MultiTenantQueueLambdaTop(
       this,

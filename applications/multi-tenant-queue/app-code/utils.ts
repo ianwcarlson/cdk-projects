@@ -12,3 +12,7 @@ export function conformToExpress(req: Request) {
   console.log("EVENT: " + JSON.stringify(event, null, 2));
   return req;
 }
+
+export function buildQueueName(tenantId: string) {
+  return `tenant-queue-${tenantId}`;
+}
