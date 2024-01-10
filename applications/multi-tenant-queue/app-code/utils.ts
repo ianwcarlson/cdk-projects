@@ -4,7 +4,7 @@ import { getCurrentInvoke } from "@vendia/serverless-express";
 
 export function conformToExpress(req: Request) {
   const currentInvoke = getCurrentInvoke();
-  const { event } = currentInvoke;;
+  const { event } = currentInvoke;
   req.params = event.pathParameters;
   if (event.body) {
     req.body = JSON.parse(event.body);

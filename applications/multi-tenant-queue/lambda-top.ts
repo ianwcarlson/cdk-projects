@@ -1,10 +1,4 @@
-import {
-  Duration,
-  Size,
-  NestedStack,
-  StackProps,
-  aws_iam,
-} from "aws-cdk-lib";
+import { Duration, Size, NestedStack, StackProps, aws_iam } from "aws-cdk-lib";
 import { NodejsFunction, SourceMapMode } from "aws-cdk-lib/aws-lambda-nodejs";
 import { RetentionDays } from "aws-cdk-lib/aws-logs";
 import { Construct } from "constructs";
@@ -140,8 +134,9 @@ export class MultiTenantQueueLambdaTop extends NestedStack {
           sourceMap: true, // include source map, defaults to false
           sourceMapMode: SourceMapMode.INLINE, // defaults to SourceMapMode.DEFAULT
           sourcesContent: true,
-          loader: { // Include the api spec in the bundle
-            '.yaml': 'file',
+          loader: {
+            // Include the api spec in the bundle
+            ".yaml": "file",
           },
         },
       });

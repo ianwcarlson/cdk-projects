@@ -43,11 +43,9 @@ app.use(
   },
 );
 
-// app.use(addUserContext);
+app.use(addUserContext);
 
 app.use("/user", userRoutes);
-
-console.log("WTF!!!!");
 
 // http.createServer(app).listen(port);
 // console.log(`Listening on port ${port}`);
