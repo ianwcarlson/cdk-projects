@@ -1,24 +1,33 @@
 import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
 import { validateEnvVar } from "../../../utils";
 import { MULTI_TENANT_TABLE_NAME } from "../../../environment-variables";
-import { GetItemCommand, PutItemCommand } from "@aws-sdk/client-dynamodb";
+import {
+  DeleteItemCommand,
+  GetItemCommand,
+  PutItemCommand,
+} from "@aws-sdk/client-dynamodb";
 
 import { dynamoClient } from "../../../lib/sdk-drivers/dynamoDB/dynamo-client";
 
 const multiTenantTableName = validateEnvVar(MULTI_TENANT_TABLE_NAME);
 
-interface CreateSecretInput {
-  tenantid: string;
+interface CreateTenantInput {
+  tenantId: string;
   queueUrl: string;
+  highPriorityQueueUrl: string;
 }
 
-export async function updateTenant({ tenantid, queueUrl }: CreateSecretInput) {
-
+export async function createTenant({
+  tenantId,
+  queueUrl,
+  highPriorityQueueUrl,
+}: CreateTenantInput) {
   const input = {
     TableName: multiTenantTableName,
     Item: marshall({
-      tenantid,
+      tenantId,
       queueUrl,
+      highPriorityQueueUrl,
     }),
   };
 
@@ -28,12 +37,10 @@ export async function updateTenant({ tenantid, queueUrl }: CreateSecretInput) {
   return dynamoClient.send(command);
 }
 
-export async function GetTenant(tenantId: string) {
+export async function getTenant(tenantId: string) {
   const input = {
-    // GetItemInput
     TableName: multiTenantTableName,
     Key: {
-      // required
       tenantId: {
         S: tenantId,
       },
@@ -43,8 +50,28 @@ export async function GetTenant(tenantId: string) {
   const response = await dynamoClient.send(command);
 
   if (response && response.Item) {
-    return unmarshall(response.Item);
+    const { tenantId, queueUrl, highPriorityQueueUrl } = unmarshall(
+      response.Item,
+    );
+    return {
+      tenantId,
+      queueUrl,
+      highPriorityQueueUrl,
+    };
   }
 
   return null;
+}
+
+export function deleteTenant(tenantId: string) {
+  const input = {
+    TableName: multiTenantTableName,
+    Key: {
+      tenantId: {
+        S: tenantId,
+      },
+    },
+  };
+  const command = new DeleteItemCommand(input);
+  return dynamoClient.send(command);
 }
