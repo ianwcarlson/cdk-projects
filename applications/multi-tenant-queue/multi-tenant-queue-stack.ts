@@ -23,20 +23,31 @@ export class MultiTenantQueueStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    const roundRobinQueue = new Queue(this, `MultiTenantRoundRobinQueue-${instanceId}`, {
-      queueName: `MultiTenantRoundRobinQueue-${instanceId}`,
-      fifo: true,
-      fifoThroughputLimit: FifoThroughputLimit.PER_MESSAGE_GROUP_ID,
-    });
-
-    const multiTenantTable = new cdk.aws_dynamodb.Table(this, `MultiTenantTable-${instanceId}`, {
-      partitionKey: {
-        name: "tenantId",
-        type: cdk.aws_dynamodb.AttributeType.STRING,
+    const roundRobinQueue = new Queue(
+      this,
+      `MultiTenantRoundRobinQueue-${instanceId}`,
+      {
+        queueName: `MultiTenantRoundRobinQueue-${instanceId}`,
+        fifo: true,
+        fifoThroughputLimit: FifoThroughputLimit.PER_MESSAGE_GROUP_ID,
       },
-      sortKey: { name: "queueUrl", type: cdk.aws_dynamodb.AttributeType.STRING },
-      billingMode: cdk.aws_dynamodb.BillingMode.PAY_PER_REQUEST,
-    });
+    );
+
+    const multiTenantTable = new cdk.aws_dynamodb.Table(
+      this,
+      `MultiTenantTable-${instanceId}`,
+      {
+        partitionKey: {
+          name: "tenantId",
+          type: cdk.aws_dynamodb.AttributeType.STRING,
+        },
+        sortKey: {
+          name: "queueUrl",
+          type: cdk.aws_dynamodb.AttributeType.STRING,
+        },
+        billingMode: cdk.aws_dynamodb.BillingMode.PAY_PER_REQUEST,
+      },
+    );
 
     const multiTenantQueueLambdaTop = new MultiTenantQueueLambdaTop(
       this,

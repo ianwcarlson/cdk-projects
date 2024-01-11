@@ -2,7 +2,12 @@ import { Duration, Size, NestedStack, StackProps, aws_iam } from "aws-cdk-lib";
 import { NodejsFunction, SourceMapMode } from "aws-cdk-lib/aws-lambda-nodejs";
 import { RetentionDays } from "aws-cdk-lib/aws-logs";
 import { Construct } from "constructs";
-import { INSTANCE_ID, MULTI_TENANT_TABLE_NAME, REGION, ROUND_ROBIN_QUEUE_URL } from "../../environment-variables";
+import {
+  INSTANCE_ID,
+  MULTI_TENANT_TABLE_NAME,
+  REGION,
+  ROUND_ROBIN_QUEUE_URL,
+} from "../../environment-variables";
 import { ManagedPolicy } from "aws-cdk-lib/aws-iam";
 import { validateEnvVar } from "../../utils";
 
