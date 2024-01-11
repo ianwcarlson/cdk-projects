@@ -4,6 +4,8 @@ export const REGION = "REGION";
 
 export const INSTANCE_ID = "INSTANCE_ID";
 
+// Batch Processor environment variables
+
 export const LOG_GROUP_NAME = "LOG_GROUP_NAME";
 export const ECS_CLUSTER_ARN = "ECS_CLUSTER_ARN";
 export const ECS_GROUP = "ECS_GROUP";
@@ -23,3 +25,8 @@ export const BATCH_PARALLELISM = "BATCH_PARALLELISM";
 export const JOB_QUEUE_URL = "JOB_QUEUE_URL";
 
 export const JOB_STATUS_QUEUE_URL = "JOB_STATUS_QUEUE_URL";
+
+// Multi-tenant queue environment variables
+
+export const ROUND_ROBIN_QUEUE_URL = "ROUND_ROBIN_QUEUE_URL";
+export const MULTI_TENANT_TABLE_NAME = "MULTI_TENANT_TABLE_NAME";

@@ -3,6 +3,10 @@ import { HttpApi, HttpMethod } from "aws-cdk-lib/aws-apigatewayv2";
 import { HttpLambdaIntegration } from "aws-cdk-lib/aws-apigatewayv2-integrations";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Construct } from "constructs";
+import { validateEnvVar } from "../../utils";
+import { INSTANCE_ID } from "../../environment-variables";
+
+const instanceId = validateEnvVar(INSTANCE_ID);
 
 interface HttpApiGatewayTopProps extends StackProps {
   apiDefaultHandlerLambda: NodejsFunction;
@@ -15,11 +19,11 @@ export class HttpApiGatewayTop extends NestedStack {
     const { apiDefaultHandlerLambda } = props;
 
     const apiIntegration = new HttpLambdaIntegration(
-      "ApiDefaultHandlerLambda",
+      `ApiDefaultHandlerLambda-${instanceId}`,
       apiDefaultHandlerLambda,
     );
 
-    const httpApi = new HttpApi(this, "HttpApi");
+    const httpApi = new HttpApi(this, `MultiTenantHttpApi-${instanceId}`);
 
     const paths = [
       "/user",

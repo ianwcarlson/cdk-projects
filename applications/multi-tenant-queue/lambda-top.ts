@@ -2,8 +2,11 @@ import { Duration, Size, NestedStack, StackProps, aws_iam } from "aws-cdk-lib";
 import { NodejsFunction, SourceMapMode } from "aws-cdk-lib/aws-lambda-nodejs";
 import { RetentionDays } from "aws-cdk-lib/aws-logs";
 import { Construct } from "constructs";
-import { REGION } from "../../environment-variables";
+import { INSTANCE_ID, MULTI_TENANT_TABLE_NAME, REGION, ROUND_ROBIN_QUEUE_URL } from "../../environment-variables";
 import { ManagedPolicy } from "aws-cdk-lib/aws-iam";
+import { validateEnvVar } from "../../utils";
+
+const instanceId = validateEnvVar(INSTANCE_ID);
 
 interface CreateLambdaInput {
   id: string;
@@ -15,15 +18,26 @@ interface CreateLambdaInput {
   maxConcurrency?: number;
 }
 
+interface MultiTenantQueueLambdaTopProps extends StackProps {
+  roundRobinQueueUrl: string;
+  multiTenantTableName: string;
+}
+
 export class MultiTenantQueueLambdaTop extends NestedStack {
   public lambdas: { [key: string]: NodejsFunction } = {};
   private createLambda: (args: CreateLambdaInput) => NodejsFunction;
 
-  constructor(scope: Construct, id: string, props: StackProps) {
+  constructor(
+    scope: Construct,
+    id: string,
+    props: MultiTenantQueueLambdaTopProps,
+  ) {
     super(scope, id, props);
 
     const region = props.env?.region || "";
     const account = props.env?.account || "";
+    const roundRobinQueueUrl = props.roundRobinQueueUrl;
+    const multiTenantTableName = props.multiTenantTableName;
 
     const inlinePolicies = {
       defaultPolicy: new aws_iam.PolicyDocument({
@@ -93,7 +107,7 @@ export class MultiTenantQueueLambdaTop extends NestedStack {
 
     const defaultExecutionRole = new aws_iam.Role(
       this,
-      "lambda-execution-role",
+      `LambdaExecutionRole-${instanceId}`,
       {
         assumedBy: new aws_iam.CompositePrincipal(
           new aws_iam.ServicePrincipal("lambda.amazonaws.com"),
@@ -145,6 +159,10 @@ export class MultiTenantQueueLambdaTop extends NestedStack {
     this.lambdas.apiDefaultHandler = this.createLambda({
       id: "api-default-handler",
       description: "Default API Handler",
+      environment: {
+        [ROUND_ROBIN_QUEUE_URL]: roundRobinQueueUrl,
+        [MULTI_TENANT_TABLE_NAME]: multiTenantTableName,
+      },
     });
   }
 }

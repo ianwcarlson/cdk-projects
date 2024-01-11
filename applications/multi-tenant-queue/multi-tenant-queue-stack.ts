@@ -23,10 +23,19 @@ export class MultiTenantQueueStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    const roundRobinQueue = new Queue(this, `Queue-${instanceId}`, {
-      queueName: `RoundRobinQueue-${instanceId}`,
+    const roundRobinQueue = new Queue(this, `MultiTenantRoundRobinQueue-${instanceId}`, {
+      queueName: `MultiTenantRoundRobinQueue-${instanceId}`,
       fifo: true,
-      fifoThroughputLimit: FifoThroughputLimit.PER_MESSAGE_GROUP_ID
+      fifoThroughputLimit: FifoThroughputLimit.PER_MESSAGE_GROUP_ID,
+    });
+
+    const multiTenantTable = new cdk.aws_dynamodb.Table(this, `MultiTenantTable-${instanceId}`, {
+      partitionKey: {
+        name: "tenantId",
+        type: cdk.aws_dynamodb.AttributeType.STRING,
+      },
+      sortKey: { name: "queueUrl", type: cdk.aws_dynamodb.AttributeType.STRING },
+      billingMode: cdk.aws_dynamodb.BillingMode.PAY_PER_REQUEST,
     });
 
     const multiTenantQueueLambdaTop = new MultiTenantQueueLambdaTop(
@@ -37,10 +46,12 @@ export class MultiTenantQueueStack extends cdk.Stack {
           region,
           account,
         },
+        roundRobinQueueUrl: roundRobinQueue.queueUrl,
+        multiTenantTableName: multiTenantTable.tableName,
       },
     );
 
-    new HttpApiGatewayTop(this, `HttpApiGatewayTop-${instanceId}`, {
+    new HttpApiGatewayTop(this, `MultiTenantHttpApiGatewayTop-${instanceId}`, {
       apiDefaultHandlerLambda:
         multiTenantQueueLambdaTop.lambdas.apiDefaultHandler,
       env: {
