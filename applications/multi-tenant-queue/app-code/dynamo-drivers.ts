@@ -5,6 +5,9 @@ import {
   DeleteItemCommand,
   GetItemCommand,
   PutItemCommand,
+  ScanCommand,
+  ScanCommandInput,
+  ScanCommandOutput,
 } from "@aws-sdk/client-dynamodb";
 
 import { dynamoClient } from "../../../lib/sdk-drivers/dynamoDB/dynamo-client";
@@ -74,4 +77,24 @@ export function deleteTenant(tenantId: string) {
   };
   const command = new DeleteItemCommand(input);
   return dynamoClient.send(command);
+}
+
+export async function scanTenants({
+  tenantId,
+  thunk,
+}: {
+  tenantId: string;
+  thunk: (tenantId: string, response: ScanCommandOutput) => void;
+}) {
+  let exclustiveStartKey;
+  do {
+    const input: ScanCommandInput = {
+      TableName: multiTenantTableName,
+      ExclusiveStartKey: exclustiveStartKey,
+    };
+    const command = new ScanCommand(input);
+    const response = await dynamoClient.send(command);
+    thunk(tenantId, response);
+    exclustiveStartKey = response.LastEvaluatedKey;
+  } while (exclustiveStartKey);
 }

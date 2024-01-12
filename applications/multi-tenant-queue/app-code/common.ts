@@ -41,37 +41,17 @@ export async function createTenantService(tenantId: string) {
 
       return { status: 500 };
     });
-
-    let retryCount = 1000;
-    do {
-      await sleep(200);
-      retryCount -= 1;
-
-      const tenantQueueName = buildTenantQueueName(tenantId);
-      const highPriorityQueueName = buildHighPriorityTenantQueueName(tenantId);
-      const queues = await listQueues();
-      const tenantQueue = queues.find((queue) =>
-        queue.includes(tenantQueueName),
-      );
-      const highProrityQueue = queues.find((queue) =>
-        queue.includes(highPriorityQueueName),
-      );
-
-      if (tenantQueue && highProrityQueue) {
-        break;
-      }
-    } while (retryCount > 0);
-
-    await createTenant({
-      tenantId,
-      queueUrl: buildTenantQueueName(tenantId),
-      highPriorityQueueUrl: buildHighPriorityTenantQueueName(tenantId),
-    });
-
-    return { status: 200 };
   }
 
-  return { status: 500 };
+  await waitForQueueCreation(tenantId);
+
+  await createTenant({
+    tenantId,
+    queueUrl: buildTenantQueueName(tenantId),
+    highPriorityQueueUrl: buildHighPriorityTenantQueueName(tenantId),
+  });
+
+  return { status: 200 };
 }
 
 export function adaptReceivedMessages(messages: Message[]) {
@@ -82,4 +62,24 @@ export function adaptReceivedMessages(messages: Message[]) {
       receiptHandle: message.ReceiptHandle,
     };
   });
+}
+
+async function waitForQueueCreation(tenantId: string) {
+  let retryCount = 1000;
+  do {
+    await sleep(200);
+    retryCount -= 1;
+
+    const tenantQueueName = buildTenantQueueName(tenantId);
+    const highPriorityQueueName = buildHighPriorityTenantQueueName(tenantId);
+    const queues = await listQueues();
+    const tenantQueue = queues.find((queue) => queue.includes(tenantQueueName));
+    const highProrityQueue = queues.find((queue) =>
+      queue.includes(highPriorityQueueName),
+    );
+
+    if (tenantQueue && highProrityQueue) {
+      break;
+    }
+  } while (retryCount > 0);
 }

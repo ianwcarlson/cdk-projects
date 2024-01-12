@@ -3,6 +3,7 @@ import {
   DeleteMessageBatchCommand,
   DeleteQueueCommand,
   ListQueuesCommand,
+  PurgeQueueCommand,
   ReceiveMessageCommand,
   SendMessageBatchCommand,
   SendMessageCommand,
@@ -220,4 +221,10 @@ export async function deleteQueue(queueUrl: string) {
   return response;
 }
 
-export async function getQueueStatus() {}
+export async function purgeQueue(queueUrl: string) {
+  const input = {
+    QueueUrl: queueUrl,
+  };
+  const command = new PurgeQueueCommand(input);
+  return sqsClient.send(command);
+}

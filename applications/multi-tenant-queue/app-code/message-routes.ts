@@ -162,22 +162,19 @@ router.get("/receive", async (req: Request, res: Response) => {
   res.send([]);
 });
 
-router.post(
-  "/acknowledge",
-  async (req: Request, res: Response) => {
-    const _req = conformToExpress(req);
-    const receiptHandle = _req.body.receiptHandle;
-    const queueUrl = _req.body.queueUrl;
-    const id = _req.body.id;
+router.post("/acknowledge", async (req: Request, res: Response) => {
+  const _req = conformToExpress(req);
+  const receiptHandle = _req.body.receiptHandle;
+  const queueUrl = _req.body.queueUrl;
+  const id = _req.body.id;
 
-    await deleteMessageBatch({
-      queueUrl,
-      entries: [{ id, receiptHandle}],
-    });
+  await deleteMessageBatch({
+    queueUrl,
+    entries: [{ id, receiptHandle }],
+  });
 
-    res.sendStatus(200);
-  }
-)
+  res.sendStatus(200);
+});
 
 router.post(
   "/send",
