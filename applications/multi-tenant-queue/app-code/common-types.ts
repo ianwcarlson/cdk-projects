@@ -12,3 +12,9 @@ export interface MiddlewareError {
   message?: string;
   errors?: any[];
 }
+
+export interface RoundRobinQueueMessage {
+  tenantId: string;
+  highPriorityQueueName: string;
+  tenantQueueName: string;
+}

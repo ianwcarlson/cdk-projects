@@ -11,7 +11,7 @@ import {
   sleep,
   validateEnvVar,
 } from "../../../utils";
-import { createTenant } from "./dynamo-drivers";
+import { createTenant, scanTenants } from "./dynamo-drivers";
 
 const instanceId = validateEnvVar(INSTANCE_ID);
 const tenantQueuePrefix = `TenantQueue-${instanceId}`;
@@ -82,4 +82,8 @@ async function waitForQueueCreation(tenantId: string) {
       break;
     }
   } while (retryCount > 0);
+}
+
+export async function purgeAllTenants() {
+  await scanTenants(() => {});
 }

@@ -79,13 +79,9 @@ export function deleteTenant(tenantId: string) {
   return dynamoClient.send(command);
 }
 
-export async function scanTenants({
-  tenantId,
-  thunk,
-}: {
-  tenantId: string;
-  thunk: (tenantId: string, response: ScanCommandOutput) => void;
-}) {
+export async function scanTenants(
+  thunk: (response: ScanCommandOutput) => void,
+) {
   let exclustiveStartKey;
   do {
     const input: ScanCommandInput = {
@@ -94,7 +90,7 @@ export async function scanTenants({
     };
     const command = new ScanCommand(input);
     const response = await dynamoClient.send(command);
-    thunk(tenantId, response);
+    thunk(response);
     exclustiveStartKey = response.LastEvaluatedKey;
   } while (exclustiveStartKey);
 }

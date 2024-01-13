@@ -17,4 +17,5 @@ new BatchProcessorStack(app, "BatchProcessorStack", {
 
 new MultiTenantQueueStack(app, "MultiTenantQueueStack", {
   env: { account, region },
+  instanceId: "us-west-1",
 });

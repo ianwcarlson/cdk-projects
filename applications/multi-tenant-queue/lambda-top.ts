@@ -9,9 +9,6 @@ import {
   ROUND_ROBIN_QUEUE_URL,
 } from "../../environment-variables";
 import { ManagedPolicy } from "aws-cdk-lib/aws-iam";
-import { validateEnvVar } from "../../utils";
-
-const instanceId = validateEnvVar(INSTANCE_ID);
 
 interface CreateLambdaInput {
   id: string;
@@ -24,6 +21,7 @@ interface CreateLambdaInput {
 }
 
 interface MultiTenantQueueLambdaTopProps extends StackProps {
+  instanceId: string;
   roundRobinQueueUrl: string;
   multiTenantTableName: string;
 }
@@ -39,10 +37,9 @@ export class MultiTenantQueueLambdaTop extends NestedStack {
   ) {
     super(scope, id, props);
 
+    const { instanceId, roundRobinQueueUrl, multiTenantTableName } = props;
     const region = props.env?.region || "";
     const account = props.env?.account || "";
-    const roundRobinQueueUrl = props.roundRobinQueueUrl;
-    const multiTenantTableName = props.multiTenantTableName;
 
     const inlinePolicies = {
       defaultPolicy: new aws_iam.PolicyDocument({
@@ -66,7 +63,7 @@ export class MultiTenantQueueLambdaTop extends NestedStack {
             ],
             principals: [],
             resources: [
-              `arn:aws:dynamodb:${region}:${account}:table/DynamoTop*`,
+              `arn:aws:dynamodb:${region}:${account}:table/MultiTenant*`,
             ],
           }),
           new aws_iam.PolicyStatement({
@@ -93,6 +90,12 @@ export class MultiTenantQueueLambdaTop extends NestedStack {
               "logs:PutSubscriptionFilter",
               "logs:PutRetentionPolicy",
               "sqs:sendmessage",
+              "sqs:listqueues",
+              "sqs:createqueue",
+              "sqs:purgequeue",
+              "sqs:deletequeue",
+              "sqs:sendmessage",
+              "sqs:receivemessage",
               "kms:Encrypt",
               "kms:Decrypt",
               "logs:Put*",
@@ -133,6 +136,7 @@ export class MultiTenantQueueLambdaTop extends NestedStack {
     }: CreateLambdaInput) => {
       const defaultEnvironment = {
         [REGION]: region,
+        [INSTANCE_ID]: instanceId,
       };
       const combinedEnvironment = {
         ...defaultEnvironment,

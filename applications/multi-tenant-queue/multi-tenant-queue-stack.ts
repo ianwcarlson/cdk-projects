@@ -6,30 +6,36 @@ import {
 } from "aws-cdk-lib/aws-ec2";
 import { Construct } from "constructs";
 import { validateEnvVar } from "../../utils";
-import { ACCOUNT, INSTANCE_ID, REGION } from "../../environment-variables";
+import { ACCOUNT, REGION } from "../../environment-variables";
 import { MultiTenantQueueLambdaTop } from "./lambda-top";
 import { HttpApiGatewayTop } from "./http-api-gateway-top";
 import { FifoThroughputLimit, Queue } from "aws-cdk-lib/aws-sqs";
+import { Stack, StackProps } from "aws-cdk-lib";
 
 const region = validateEnvVar(REGION);
 const account = validateEnvVar(ACCOUNT);
-const instanceId = validateEnvVar(INSTANCE_ID);
 
-export class MultiTenantQueueStack extends cdk.Stack {
+interface MultiTenantQueueStackProps extends StackProps {
+  instanceId: string;
+}
+
+export class MultiTenantQueueStack extends Stack {
   publicSubnet: PublicSubnet;
   privateSubnet: PrivateSubnet;
   natGateway: CfnNatGateway;
 
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+  constructor(scope: Construct, id: string, props: MultiTenantQueueStackProps) {
     super(scope, id, props);
+
+    const { instanceId } = props;
 
     const roundRobinQueue = new Queue(
       this,
       `MultiTenantRoundRobinQueue-${instanceId}`,
       {
-        queueName: `MultiTenantRoundRobinQueue-${instanceId}`,
+        queueName: `MultiTenantRoundRobinQueue-${instanceId}.fifo`,
         fifo: true,
-        fifoThroughputLimit: FifoThroughputLimit.PER_MESSAGE_GROUP_ID,
+        fifoThroughputLimit: FifoThroughputLimit.PER_QUEUE,
       },
     );
 
@@ -41,10 +47,6 @@ export class MultiTenantQueueStack extends cdk.Stack {
           name: "tenantId",
           type: cdk.aws_dynamodb.AttributeType.STRING,
         },
-        sortKey: {
-          name: "queueUrl",
-          type: cdk.aws_dynamodb.AttributeType.STRING,
-        },
         billingMode: cdk.aws_dynamodb.BillingMode.PAY_PER_REQUEST,
       },
     );
@@ -53,6 +55,7 @@ export class MultiTenantQueueStack extends cdk.Stack {
       this,
       `MultiTenantQueueLambdaTop-${instanceId}`,
       {
+        instanceId,
         env: {
           region,
           account,
@@ -63,6 +66,7 @@ export class MultiTenantQueueStack extends cdk.Stack {
     );
 
     new HttpApiGatewayTop(this, `MultiTenantHttpApiGatewayTop-${instanceId}`, {
+      instanceId,
       apiDefaultHandlerLambda:
         multiTenantQueueLambdaTop.lambdas.apiDefaultHandler,
       env: {

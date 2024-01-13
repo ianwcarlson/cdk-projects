@@ -15,6 +15,7 @@ import {
 } from "./common";
 import { validateEnvVar } from "../../../utils";
 import { ROUND_ROBIN_QUEUE_URL } from "../../../environment-variables";
+import { RoundRobinQueueMessage } from "./common-types";
 
 const roundRobinQueueUrl = validateEnvVar(ROUND_ROBIN_QUEUE_URL);
 
@@ -106,12 +107,15 @@ router.get("/receive", async (req: Request, res: Response) => {
     waitTimeSeconds: 0,
   });
 
-  if (response && response.Messages) {
-    const tenantId = response.Messages[0].Body;
+  if (response && response.Messages && response.Messages[0].Body) {
+    const {
+      tenantId,
+      highPriorityQueueName,
+      tenantQueueName,
+    }: RoundRobinQueueMessage = JSON.parse(response.Messages[0].Body);
 
     if (tenantId) {
       // Check the high priority queue first
-      const highPriorityQueueName = buildHighPriorityTenantQueueName(tenantId);
       const {
         response: highPriorityResponse,
         acknowledgeMessageReceived: acknowledgeMessageReceivedHighPriority,
@@ -135,8 +139,7 @@ router.get("/receive", async (req: Request, res: Response) => {
         return;
       }
 
-      // Now chec k the regular queue
-      const tenantQueueName = buildTenantQueueName(tenantId);
+      // Now check the regular queue
       const { response: tenantResponse, acknowledgeMessageReceived } =
         await receiveMessage({
           queueUrl: tenantQueueName,
@@ -184,23 +187,37 @@ router.post(
     const tenantId = _req.body.tenantId;
     const messages = _req.body.messages;
     const highPriority = _req.body.highPriority;
+    const highPriorityQueueName = buildHighPriorityTenantQueueName(tenantId);
+    const tenantQueueName = buildTenantQueueName(tenantId);
 
     const existingTenant = await getTenant(tenantId);
     if (!existingTenant) {
       await createTenantService(tenantId);
     }
 
-    if (highPriority) {
-      await sendMessageBatch({
-        queueUrl: buildHighPriorityTenantQueueName(tenantId),
-        messages,
-      });
-    } else {
-      await sendMessageBatch({
-        queueUrl: buildTenantQueueName(tenantId),
-        messages,
-      });
-    }
+    const targetQueueUrl = highPriority
+      ? highPriorityQueueName
+      : tenantQueueName;
+    await sendMessageBatch({
+      queueUrl: targetQueueUrl,
+      messages,
+    });
+
+    const roundRobinQueueMessage: RoundRobinQueueMessage = {
+      tenantId,
+      highPriorityQueueName,
+      tenantQueueName,
+    };
+
+    await sendMessageBatch({
+      queueUrl: roundRobinQueueUrl,
+      messages: [
+        {
+          id: tenantId,
+          messageBody: JSON.stringify(roundRobinQueueMessage),
+        },
+      ],
+    });
 
     console.log("Sending messages: " + JSON.stringify(messages, null, 2));
 
