@@ -16,6 +16,8 @@ import {
 import { validateEnvVar } from "../../../utils";
 import { ROUND_ROBIN_QUEUE_URL } from "../../../environment-variables";
 import { RoundRobinQueueMessage } from "./common-types";
+import { ReceiveMessageCommandOutput } from "@aws-sdk/client-sqs";
+import { at } from "lodash";
 
 const roundRobinQueueUrl = validateEnvVar(ROUND_ROBIN_QUEUE_URL);
 
@@ -33,78 +35,7 @@ router.get("/receive", async (req: Request, res: Response) => {
   const { response } = await receiveMessage({
     queueUrl: roundRobinQueueUrl,
     maxNumberOfMessages: 1,
-    waitTimeSeconds: 0,
-  });
-
-  if (response && response.Messages) {
-    const tenantId = response.Messages[0].Body;
-
-    if (tenantId) {
-      // Check the high priority queue first
-      const highPriorityQueueName = buildHighPriorityTenantQueueName(tenantId);
-      const {
-        response: highPriorityResponse,
-        acknowledgeMessageReceived: acknowledgeMessageReceivedHighPriority,
-      } = await receiveMessage({
-        queueUrl: highPriorityQueueName,
-        maxNumberOfMessages: 1,
-        waitTimeSeconds: 0,
-      });
-
-      if (
-        highPriorityResponse &&
-        highPriorityResponse.Messages &&
-        highPriorityResponse.Messages.length > 0
-      ) {
-        if (autoAcknowledgeQuery) {
-          await acknowledgeMessageReceivedHighPriority();
-        }
-        res
-          .status(200)
-          .send(adaptReceivedMessages(highPriorityResponse.Messages));
-        return;
-      }
-
-      // Now chec k the regular queue
-      const tenantQueueName = buildTenantQueueName(tenantId);
-      const { response: tenantResponse, acknowledgeMessageReceived } =
-        await receiveMessage({
-          queueUrl: tenantQueueName,
-          maxNumberOfMessages: 1,
-          // This will block for the requested waitTimeSeconds
-          waitTimeSeconds,
-        });
-
-      if (
-        tenantResponse &&
-        tenantResponse.Messages &&
-        tenantResponse.Messages.length > 0
-      ) {
-        if (autoAcknowledgeQuery) {
-          await acknowledgeMessageReceived();
-        }
-        res.status(200).send(adaptReceivedMessages(tenantResponse.Messages));
-        return;
-      }
-    }
-  }
-
-  res.send([]);
-});
-
-router.get("/receive", async (req: Request, res: Response) => {
-  const _req = conformToExpress(req);
-  const waitTimeSecondsQuery = _req.query.waitTimeSeconds;
-  const autoAcknowledgeQuery = _req.query.autoAcknowledge === "true";
-
-  const waitTimeSeconds = waitTimeSecondsQuery
-    ? parseInt(waitTimeSecondsQuery.toString()) || 0
-    : 0;
-
-  const { response } = await receiveMessage({
-    queueUrl: roundRobinQueueUrl,
-    maxNumberOfMessages: 1,
-    waitTimeSeconds: 0,
+    waitTimeSeconds,
   });
 
   if (response && response.Messages && response.Messages[0].Body) {
@@ -114,6 +45,25 @@ router.get("/receive", async (req: Request, res: Response) => {
       tenantQueueName,
     }: RoundRobinQueueMessage = JSON.parse(response.Messages[0].Body);
 
+    async function refreshRoundRobinQueue() {
+      const payload: RoundRobinQueueMessage = {
+        tenantId,
+        highPriorityQueueName,
+        tenantQueueName,
+      };
+      sendMessageBatch({
+        queueUrl: roundRobinQueueUrl,
+        messages: [
+          {
+            id: tenantId,
+            messageBody: JSON.stringify(payload),
+            messageDeduplicationId: tenantId,
+            messageGroupId: tenantId,
+          },
+        ],
+      })
+    }
+
     if (tenantId) {
       // Check the high priority queue first
       const {
@@ -125,17 +75,14 @@ router.get("/receive", async (req: Request, res: Response) => {
         waitTimeSeconds: 0,
       });
 
-      if (
-        highPriorityResponse &&
-        highPriorityResponse.Messages &&
-        highPriorityResponse.Messages.length > 0
-      ) {
+      if (atLeastOneMessage(highPriorityResponse)) {
         if (autoAcknowledgeQuery) {
           await acknowledgeMessageReceivedHighPriority();
         }
+        await refreshRoundRobinQueue();
         res
           .status(200)
-          .send(adaptReceivedMessages(highPriorityResponse.Messages));
+          .send(adaptReceivedMessages(highPriorityResponse.Messages || []));
         return;
       }
 
@@ -144,19 +91,17 @@ router.get("/receive", async (req: Request, res: Response) => {
         await receiveMessage({
           queueUrl: tenantQueueName,
           maxNumberOfMessages: 1,
-          // This will block for the requested waitTimeSeconds
-          waitTimeSeconds,
+          waitTimeSeconds: 0,
         });
 
-      if (
-        tenantResponse &&
-        tenantResponse.Messages &&
-        tenantResponse.Messages.length > 0
-      ) {
+      if (atLeastOneMessage(tenantResponse)) {
         if (autoAcknowledgeQuery) {
           await acknowledgeMessageReceived();
         }
-        res.status(200).send(adaptReceivedMessages(tenantResponse.Messages));
+        await refreshRoundRobinQueue();
+        res
+          .status(200)
+          .send(adaptReceivedMessages(tenantResponse.Messages || []));
         return;
       }
     }
@@ -209,6 +154,8 @@ router.post(
       tenantQueueName,
     };
 
+    // The goal here is to only have at most one message in the round round queue
+    // per tenant to support fairness
     await sendMessageBatch({
       queueUrl: roundRobinQueueUrl,
       messages: [
@@ -235,5 +182,9 @@ router.delete(
     console.log("Deleting tenant");
   },
 );
+
+function atLeastOneMessage(message: ReceiveMessageCommandOutput) {
+  return message && message.Messages && message.Messages.length > 0;
+}
 
 export default router;
