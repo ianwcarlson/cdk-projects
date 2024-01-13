@@ -211,6 +211,7 @@ router.post(
 
     await sendMessageBatch({
       queueUrl: roundRobinQueueUrl,
+
       messages: [
         {
           id: tenantId,

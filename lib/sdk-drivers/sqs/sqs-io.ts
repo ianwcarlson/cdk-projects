@@ -12,7 +12,12 @@ import { sqsClient } from "./sqs-client";
 
 export interface SendMessageBatchInput {
   queueUrl: string;
-  messages: Array<{ id: string; messageBody: string }>;
+  messages: Array<{
+    id: string;
+    messageBody: string;
+    messageDeduplicationId?: string;
+    messageGroupId?: string;
+  }>;
 }
 
 export async function sendMessageBatch({
@@ -22,7 +27,12 @@ export async function sendMessageBatch({
   const input = {
     // SendMessageBatchRequest
     QueueUrl: queueUrl,
-    Entries: messages.map((m) => ({ Id: m.id, MessageBody: m.messageBody })),
+    Entries: messages.map((m) => ({
+      Id: m.id,
+      MessageBody: m.messageBody,
+      MessageDeduplicationId: m.messageDeduplicationId,
+      MessageGroupId: m.messageGroupId,
+    })),
   };
 
   const command = new SendMessageBatchCommand(input);
