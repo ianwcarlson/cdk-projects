@@ -211,11 +211,12 @@ router.post(
 
     await sendMessageBatch({
       queueUrl: roundRobinQueueUrl,
-
       messages: [
         {
           id: tenantId,
           messageBody: JSON.stringify(roundRobinQueueMessage),
+          messageDeduplicationId: tenantId,
+          messageGroupId: tenantId,
         },
       ],
     });
