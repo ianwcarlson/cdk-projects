@@ -96,6 +96,7 @@ export class MultiTenantQueueLambdaTop extends NestedStack {
               "sqs:deletequeue",
               "sqs:sendmessage",
               "sqs:receivemessage",
+              "sqs:deletemessage",
               "kms:Encrypt",
               "kms:Decrypt",
               "logs:Put*",

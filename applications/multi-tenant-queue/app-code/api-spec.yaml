@@ -240,7 +240,11 @@ paths:
     get:
       description: Read message from multi-tenant queue
       parameters:
-        - name: waitSeconds
+        - name: autoAcknowledge
+          in: query
+          schema:
+            type: boolean
+        - name: waitTimeSeconds
           in: query
           required: true
           description: Get messages for tenant

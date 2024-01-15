@@ -7,6 +7,7 @@ import {
 } from "../../../lib/sdk-drivers/sqs/sqs-io";
 import {
   didAnySettledPromisesFail,
+  getFailedValuesFromSettledPromises,
   getFulfilledValuesFromSettledPromises,
   sleep,
   validateEnvVar,
@@ -32,26 +33,42 @@ export async function createTenantService(tenantId: string) {
     }),
   ]);
 
+  console.log("queues", JSON.stringify(queues));
+
   if (didAnySettledPromisesFail(queues)) {
     const successResults = getFulfilledValuesFromSettledPromises(queues);
     successResults.forEach((result) => {
       if (result && result.QueueUrl) {
         deleteQueue(result.QueueUrl);
       }
-
-      return { status: 500 };
     });
+    const failedResults = getFailedValuesFromSettledPromises(queues);
+    // Just sample the first failurem for now
+    return {
+      status: failedResults[0].reason.name,
+      message: failedResults[0].reason.$metadata.httpStatusCode,
+    };
   }
 
   await waitForQueueCreation(tenantId);
 
-  await createTenant({
-    tenantId,
-    queueUrl: buildTenantQueueName(tenantId),
-    highPriorityQueueUrl: buildHighPriorityTenantQueueName(tenantId),
-  });
+  if (queues && queues.length === 2) {
+    // @ts-ignore
+    console.log("create queueUrl: " + queues[0].value.QueueUrl);
+    // @ts-ignore
+    console.log("create highPriorityQueueUrl: " + queues[1].value.QueueUrl);
+    await createTenant({
+      tenantId,
+      // @ts-ignore
+      queueUrl: queues[0].value.QueueUrl,
+      // @ts-ignore
+      highPriorityQueueUrl: queues[1].value.QueueUrl,
+    });
 
-  return { status: 200 };
+    return { status: 200 };
+  }
+
+  return { status: 500 };
 }
 
 export function adaptReceivedMessages(messages: Message[]) {
@@ -65,14 +82,15 @@ export function adaptReceivedMessages(messages: Message[]) {
 }
 
 async function waitForQueueCreation(tenantId: string) {
-  let retryCount = 1000;
+  let retryCount = 100;
   do {
-    await sleep(200);
+    await sleep(1000);
     retryCount -= 1;
 
     const tenantQueueName = buildTenantQueueName(tenantId);
     const highPriorityQueueName = buildHighPriorityTenantQueueName(tenantId);
     const queues = await listQueues();
+    console.log("queues", queues);
     const tenantQueue = queues.find((queue) => queue.includes(tenantQueueName));
     const highProrityQueue = queues.find((queue) =>
       queue.includes(highPriorityQueueName),

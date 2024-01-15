@@ -48,6 +48,7 @@ export async function getTenant(tenantId: string) {
         S: tenantId,
       },
     },
+    ConsistentRead: true,
   };
   const command = new GetItemCommand(input);
   const response = await dynamoClient.send(command);
@@ -56,6 +57,7 @@ export async function getTenant(tenantId: string) {
     const { tenantId, queueUrl, highPriorityQueueUrl } = unmarshall(
       response.Item,
     );
+    console.log("unmarshalled: " + JSON.stringify(response.Item));
     return {
       tenantId,
       queueUrl,

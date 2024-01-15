@@ -6,7 +6,6 @@ import {
   PurgeQueueCommand,
   ReceiveMessageCommand,
   SendMessageBatchCommand,
-  SendMessageCommand,
 } from "@aws-sdk/client-sqs";
 import { sqsClient } from "./sqs-client";
 

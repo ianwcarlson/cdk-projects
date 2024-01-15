@@ -27,7 +27,9 @@ router.post(
     const message =
       response.status === 200 ? "Tenant created" : "Tenant creation failed";
 
-    res.status(response.status).send(message);
+    res
+      .status(response.status)
+      .send({ message, status: response.status, data: { tenantId } });
   },
 );
 
@@ -56,12 +58,14 @@ router.delete(
     console.log("Deleting tenant");
 
     const _req = conformToExpress(req);
-    const existingTenant = await getTenant(_req.body.tenantId);
+    const tenantId = _req.params.tenantId;
+    console.log("Deleting tenant: " + tenantId);
+    const existingTenant = await getTenant(tenantId);
     if (existingTenant) {
       await deleteQueue(existingTenant.queueUrl);
       await deleteQueue(existingTenant.highPriorityQueueUrl);
     }
-    await deleteTenant(_req.body.tenantId);
+    await deleteTenant(tenantId);
   },
 );
 
