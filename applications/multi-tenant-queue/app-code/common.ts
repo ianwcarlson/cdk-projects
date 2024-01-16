@@ -1,17 +1,9 @@
 import { Message } from "@aws-sdk/client-sqs";
 import { INSTANCE_ID } from "../../../environment-variables";
-import {
-  createQueue,
-  deleteQueue,
-  listQueues,
-} from "../../../lib/sdk-drivers/sqs/sqs-io";
-import {
-  didAnySettledPromisesFail,
-  getFailedValuesFromSettledPromises,
-  getFulfilledValuesFromSettledPromises,
-  sleep,
-  validateEnvVar,
-} from "../../../utils";
+import { validateEnvVar } from "../../../utils";
+import { encode } from "punycode";
+
+const IntermediateEncoding = "base64url";
 
 const instanceId = validateEnvVar(INSTANCE_ID);
 const tenantQueuePrefix = `TenantQueue-${instanceId}`;
@@ -24,33 +16,51 @@ export function buildHighPriorityTenantQueueName(tenantId: string) {
   return `${highProrityQueuePrefix}-${tenantId}`;
 }
 
-export function adaptReceivedMessages(messages: Message[]) {
+interface AdaptReceivedMessagesInput {
+  messages: Message[];
+  queueUrl: string;
+}
+
+export function adaptReceivedMessages({
+  messages,
+  queueUrl,
+}: AdaptReceivedMessagesInput) {
   return messages.map((message) => {
     return {
-      id: message.MessageId,
       message: message.Body,
-      receiptHandle: message.ReceiptHandle,
+      receiptHandle: encodeReceiptHandle({
+        id: message.MessageId || "",
+        queueUrl,
+        receiptHandle: message.ReceiptHandle || "",
+      }),
     };
   });
 }
 
-async function waitForQueueCreation(tenantId: string) {
-  let retryCount = 100;
-  do {
-    await sleep(1000);
-    retryCount -= 1;
+interface EncodeReceiptHandleInput {
+  id: string;
+  queueUrl: string;
+  receiptHandle: string;
+}
 
-    const tenantQueueName = buildTenantQueueName(tenantId);
-    const highPriorityQueueName = buildHighPriorityTenantQueueName(tenantId);
-    const queues = await listQueues();
-    console.log("queues", queues);
-    const tenantQueue = queues.find((queue) => queue.includes(tenantQueueName));
-    const highProrityQueue = queues.find((queue) =>
-      queue.includes(highPriorityQueueName),
-    );
+function encodeReceiptHandle({
+  id,
+  queueUrl,
+  receiptHandle,
+}: EncodeReceiptHandleInput) {
+  // We want to ensure there are no colons in the queue url, since we use
+  // colons to separate the queue url from the receipt handle when we
+  // return the message to the client.
+  const encodedReceiptHandle =
+    Buffer.from(receiptHandle).toString(IntermediateEncoding);
+  return `${id}:${queueUrl}:${encodedReceiptHandle}`;
+}
 
-    if (tenantQueue && highProrityQueue) {
-      break;
-    }
-  } while (retryCount > 0);
+export function decodeReceiptHandle(receiptHandle: string) {
+  const [id, queueUrl, encodedReceiptHandle] = receiptHandle.split(":");
+  const decodedReceiptHandle = Buffer.from(
+    encodedReceiptHandle,
+    IntermediateEncoding,
+  ).toString("utf-8");
+  return { id, queueUrl, receiptHandle: decodedReceiptHandle };
 }

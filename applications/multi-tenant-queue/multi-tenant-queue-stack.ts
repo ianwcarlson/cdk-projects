@@ -31,27 +31,19 @@ export class MultiTenantQueueStack extends Stack {
     const { instanceId } = props;
 
     const queues = Array.from(Array(parallelism)).map((_, i) => {
-      return new Queue(
-        this,
-        `MultiTenantQueue-${instanceId}-${i}}`,
-        {
-          queueName: `MultiTenantRoundRobinQueue-${instanceId}-${i}.fifo`,
-          fifo: true,
-          fifoThroughputLimit: FifoThroughputLimit.PER_QUEUE,
-        },
-      );
+      return new Queue(this, `MultiTenantQueue-${instanceId}-${i}}`, {
+        queueName: `MultiTenantRoundRobinQueue-${instanceId}-${i}.fifo`,
+        fifo: true,
+        fifoThroughputLimit: FifoThroughputLimit.PER_QUEUE,
+      });
     });
 
     const highPriorityQueues = Array.from(Array(parallelism)).map((_, i) => {
-      return new Queue(
-        this,
-        `MultiTenantQueue-${instanceId}-${i}}`,
-        {
-          queueName: `MultiTenantRoundRobinQueue-${instanceId}-${i}.fifo`,
-          fifo: true,
-          fifoThroughputLimit: FifoThroughputLimit.PER_QUEUE,
-        },
-      );
+      return new Queue(this, `MultiTenantQueue-${instanceId}-${i}}`, {
+        queueName: `MultiTenantRoundRobinQueue-${instanceId}-${i}.fifo`,
+        fifo: true,
+        fifoThroughputLimit: FifoThroughputLimit.PER_QUEUE,
+      });
     });
 
     const multiTenantQueueLambdaTop = new MultiTenantQueueLambdaTop(
@@ -64,7 +56,9 @@ export class MultiTenantQueueStack extends Stack {
           account,
         },
         queueUrls: queues.map((queue) => queue.queueUrl),
-        highPriorityQueueUrls: highPriorityQueues.map((queue) => queue.queueUrl),
+        highPriorityQueueUrls: highPriorityQueues.map(
+          (queue) => queue.queueUrl,
+        ),
       },
     );
 
