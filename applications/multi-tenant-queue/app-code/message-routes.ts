@@ -8,16 +8,19 @@ import {
   deleteMessageBatch,
   sendMessageBatch,
 } from "../../../lib/sdk-drivers/sqs/sqs-io";
-import { getTenant } from "./dynamo-drivers";
-import { adaptReceivedMessages, createTenantService } from "./common";
+import { adaptReceivedMessages } from "./common";
 import { validateEnvVar } from "../../../utils";
-import { ROUND_ROBIN_QUEUE_URL } from "../../../environment-variables";
 import { RoundRobinQueueMessage } from "./common-types";
 import { ReceiveMessageCommandOutput } from "@aws-sdk/client-sqs";
+import { HIGH_PRIORITY_QUEUE_URLS, PARALLELISM, QUEUE_URLS } from "../../../environment-variables";
 
-const roundRobinQueueUrl = validateEnvVar(ROUND_ROBIN_QUEUE_URL);
+const queueUrls: string[] = JSON.parse(validateEnvVar(QUEUE_URLS));
+const highPriorityQueueUrls: string[] = JSON.parse(validateEnvVar(HIGH_PRIORITY_QUEUE_URLS));
+const parallelism = parseInt(validateEnvVar(PARALLELISM));
 
 const router = Router();
+
+let queueIndex: number | null = null;
 
 router.post(
   "/send",
@@ -27,11 +30,22 @@ router.post(
     const tenantId = _req.body.tenantId;
     const messages: string[] = _req.body.messages;
     const highPriority = _req.body.highPriority;
+    const groupId = _req.body.groupId;
 
-    let existingTenant = await getTenant(tenantId);
-    if (!existingTenant) {
-      await createTenantService(tenantId);
-      existingTenant = await getTenant(tenantId);
+    // Determine which queue to send to.
+    // This is a very cheap way of uniformly distributing messages across
+    // each queue. It's not perfect, but it's good enough for most use cases.
+    // We leverage the peristance of the lambda global scope across invocations 
+    // to keep track of the queue index. If the lambda is cold started, then
+    // pick a random integer between 0 and the parallelism value. It's ok if some
+    // of the queues have a few more messages than others.
+    if (queueIndex === null) {
+      queueIndex = getRandomInt(0, parallelism);
+    } else {
+      queueIndex = queueIndex + 1;
+      if (queueIndex >= parallelism) {
+        queueIndex = 0;
+      }
     }
 
     const formattedMessages = messages.map((message) => {
@@ -41,43 +55,16 @@ router.post(
       };
     });
 
-    // console.log(
-    //   "highPriorityQueueUrl: " + existingTenant?.highPriorityQueueUrl,
-    // );
-    // console.log("queueUrl: " + existingTenant?.queueUrl);
-
-    const targetQueueUrl = highPriority
-      ? existingTenant?.highPriorityQueueUrl
-      : existingTenant?.queueUrl;
     await sendMessageBatch({
-      queueUrl: targetQueueUrl,
-      messages: formattedMessages,
-    });
-
-    const roundRobinQueueMessage: RoundRobinQueueMessage = {
-      tenantId,
-      highPriorityQueueName: existingTenant?.highPriorityQueueUrl,
-      tenantQueueName: existingTenant?.queueUrl,
-    };
-
-    console.log("Sending message: " + JSON.stringify(roundRobinQueueMessage));
-
-    // The goal here is to only have at most one message in the round round queue
-    // per tenant to support fairness. SQS FIFO queues will dededuplicate messages
-    // based on the messageDuplicationId, which is the tenantId in this case.
-    await sendMessageBatch({
-      queueUrl: roundRobinQueueUrl,
+      queueUrl: highPriority ? highPriorityQueueUrls[queueIndex]: queueUrls[queueIndex],
       messages: [
         {
           id: tenantId,
-          messageBody: JSON.stringify(roundRobinQueueMessage),
-          messageDeduplicationId: tenantId,
-          messageGroupId: tenantId,
+          messageBody: JSON.stringify(formattedMessages),
+          messageGroupId: groupId,
         },
       ],
     });
-
-    // console.log("Sending messages: " + JSON.stringify(messages, null, 2));
 
     res.status(200).send({ message: "Messages sent", status: 200 });
   },
@@ -199,14 +186,9 @@ router.post("/acknowledge", async (req: Request, res: Response) => {
   res.sendStatus(200);
 });
 
-router.delete(
-  "/:tenantId",
-  // verifyRole([RbacRoles.Read, RbacRoles.Write, RbacRoles.Admin]),
-  async (req: Request, res: Response) => {
-    const _req = conformToExpress(req);
-    console.log("Deleting tenant");
-  },
-);
+function getRandomInt(min: number, max: number) {
+  return Math.floor(Math.random() * (max - min + 1) + min);
+}
 
 function atLeastOneMessage(message: ReceiveMessageCommandOutput) {
   return message && message.Messages && message.Messages.length > 0;

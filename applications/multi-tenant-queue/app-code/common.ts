@@ -12,7 +12,6 @@ import {
   sleep,
   validateEnvVar,
 } from "../../../utils";
-import { createTenant, scanTenants } from "./dynamo-drivers";
 
 const instanceId = validateEnvVar(INSTANCE_ID);
 const tenantQueuePrefix = `TenantQueue-${instanceId}`;
@@ -23,52 +22,6 @@ export function buildTenantQueueName(tenantId: string) {
 }
 export function buildHighPriorityTenantQueueName(tenantId: string) {
   return `${highProrityQueuePrefix}-${tenantId}`;
-}
-
-export async function createTenantService(tenantId: string) {
-  const queues = await Promise.allSettled([
-    createQueue({ queueName: buildTenantQueueName(tenantId) }),
-    createQueue({
-      queueName: buildHighPriorityTenantQueueName(tenantId),
-    }),
-  ]);
-
-  console.log("queues", JSON.stringify(queues));
-
-  if (didAnySettledPromisesFail(queues)) {
-    const successResults = getFulfilledValuesFromSettledPromises(queues);
-    successResults.forEach((result) => {
-      if (result && result.QueueUrl) {
-        deleteQueue(result.QueueUrl);
-      }
-    });
-    const failedResults = getFailedValuesFromSettledPromises(queues);
-    // Just sample the first failurem for now
-    return {
-      status: failedResults[0].reason.name,
-      message: failedResults[0].reason.$metadata.httpStatusCode,
-    };
-  }
-
-  await waitForQueueCreation(tenantId);
-
-  if (queues && queues.length === 2) {
-    // @ts-ignore
-    console.log("create queueUrl: " + queues[0].value.QueueUrl);
-    // @ts-ignore
-    console.log("create highPriorityQueueUrl: " + queues[1].value.QueueUrl);
-    await createTenant({
-      tenantId,
-      // @ts-ignore
-      queueUrl: queues[0].value.QueueUrl,
-      // @ts-ignore
-      highPriorityQueueUrl: queues[1].value.QueueUrl,
-    });
-
-    return { status: 200 };
-  }
-
-  return { status: 500 };
 }
 
 export function adaptReceivedMessages(messages: Message[]) {
@@ -100,8 +53,4 @@ async function waitForQueueCreation(tenantId: string) {
       break;
     }
   } while (retryCount > 0);
-}
-
-export async function purgeAllTenants() {
-  await scanTenants(() => {});
 }

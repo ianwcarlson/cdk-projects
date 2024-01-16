@@ -3,10 +3,10 @@ import { NodejsFunction, SourceMapMode } from "aws-cdk-lib/aws-lambda-nodejs";
 import { RetentionDays } from "aws-cdk-lib/aws-logs";
 import { Construct } from "constructs";
 import {
+  HIGH_PRIORITY_QUEUE_URLS,
   INSTANCE_ID,
-  MULTI_TENANT_TABLE_NAME,
+  QUEUE_URLS,
   REGION,
-  ROUND_ROBIN_QUEUE_URL,
 } from "../../environment-variables";
 import { ManagedPolicy } from "aws-cdk-lib/aws-iam";
 
@@ -22,8 +22,8 @@ interface CreateLambdaInput {
 
 interface MultiTenantQueueLambdaTopProps extends StackProps {
   instanceId: string;
-  roundRobinQueueUrl: string;
-  multiTenantTableName: string;
+  queueUrls: string[];
+  highPriorityQueueUrls: string[];
 }
 
 export class MultiTenantQueueLambdaTop extends NestedStack {
@@ -37,7 +37,7 @@ export class MultiTenantQueueLambdaTop extends NestedStack {
   ) {
     super(scope, id, props);
 
-    const { instanceId, roundRobinQueueUrl, multiTenantTableName } = props;
+    const { instanceId } = props;
     const region = props.env?.region || "";
     const account = props.env?.account || "";
 
@@ -170,8 +170,8 @@ export class MultiTenantQueueLambdaTop extends NestedStack {
       id: "api-default-handler",
       description: "Default API Handler",
       environment: {
-        [ROUND_ROBIN_QUEUE_URL]: roundRobinQueueUrl,
-        [MULTI_TENANT_TABLE_NAME]: multiTenantTableName,
+        [QUEUE_URLS]: JSON.stringify(props.queueUrls),
+        [HIGH_PRIORITY_QUEUE_URLS]: JSON.stringify(props.highPriorityQueueUrls),
       },
     });
   }

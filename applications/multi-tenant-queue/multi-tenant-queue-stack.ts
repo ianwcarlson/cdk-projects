@@ -6,7 +6,7 @@ import {
 } from "aws-cdk-lib/aws-ec2";
 import { Construct } from "constructs";
 import { validateEnvVar } from "../../utils";
-import { ACCOUNT, REGION } from "../../environment-variables";
+import { ACCOUNT, PARALLELISM, REGION } from "../../environment-variables";
 import { MultiTenantQueueLambdaTop } from "./lambda-top";
 import { HttpApiGatewayTop } from "./http-api-gateway-top";
 import { FifoThroughputLimit, Queue } from "aws-cdk-lib/aws-sqs";
@@ -14,6 +14,7 @@ import { Stack, StackProps } from "aws-cdk-lib";
 
 const region = validateEnvVar(REGION);
 const account = validateEnvVar(ACCOUNT);
+const parallelism = parseInt(process.env[PARALLELISM] || "1");
 
 interface MultiTenantQueueStackProps extends StackProps {
   instanceId: string;
@@ -29,27 +30,29 @@ export class MultiTenantQueueStack extends Stack {
 
     const { instanceId } = props;
 
-    const roundRobinQueue = new Queue(
-      this,
-      `MultiTenantRoundRobinQueue-${instanceId}`,
-      {
-        queueName: `MultiTenantRoundRobinQueue-${instanceId}.fifo`,
-        fifo: true,
-        fifoThroughputLimit: FifoThroughputLimit.PER_QUEUE,
-      },
-    );
-
-    const multiTenantTable = new cdk.aws_dynamodb.Table(
-      this,
-      `MultiTenantTable-${instanceId}`,
-      {
-        partitionKey: {
-          name: "tenantId",
-          type: cdk.aws_dynamodb.AttributeType.STRING,
+    const queues = Array.from(Array(parallelism)).map((_, i) => {
+      return new Queue(
+        this,
+        `MultiTenantQueue-${instanceId}-${i}}`,
+        {
+          queueName: `MultiTenantRoundRobinQueue-${instanceId}-${i}.fifo`,
+          fifo: true,
+          fifoThroughputLimit: FifoThroughputLimit.PER_QUEUE,
         },
-        billingMode: cdk.aws_dynamodb.BillingMode.PAY_PER_REQUEST,
-      },
-    );
+      );
+    });
+
+    const highPriorityQueues = Array.from(Array(parallelism)).map((_, i) => {
+      return new Queue(
+        this,
+        `MultiTenantQueue-${instanceId}-${i}}`,
+        {
+          queueName: `MultiTenantRoundRobinQueue-${instanceId}-${i}.fifo`,
+          fifo: true,
+          fifoThroughputLimit: FifoThroughputLimit.PER_QUEUE,
+        },
+      );
+    });
 
     const multiTenantQueueLambdaTop = new MultiTenantQueueLambdaTop(
       this,
@@ -60,8 +63,8 @@ export class MultiTenantQueueStack extends Stack {
           region,
           account,
         },
-        roundRobinQueueUrl: roundRobinQueue.queueUrl,
-        multiTenantTableName: multiTenantTable.tableName,
+        queueUrls: queues.map((queue) => queue.queueUrl),
+        highPriorityQueueUrls: highPriorityQueues.map((queue) => queue.queueUrl),
       },
     );
 

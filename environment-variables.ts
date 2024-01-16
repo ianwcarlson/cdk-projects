@@ -28,5 +28,6 @@ export const JOB_STATUS_QUEUE_URL = "JOB_STATUS_QUEUE_URL";
 
 // Multi-tenant queue environment variables
 
-export const ROUND_ROBIN_QUEUE_URL = "ROUND_ROBIN_QUEUE_URL";
-export const MULTI_TENANT_TABLE_NAME = "MULTI_TENANT_TABLE_NAME";
+export const QUEUE_URLS = "QUEUE_URLS";
+export const HIGH_PRIORITY_QUEUE_URLS = "HIGH_PRIORITY_QUEUE_URLS";
+export const PARALLELISM = "PARALLELISM";

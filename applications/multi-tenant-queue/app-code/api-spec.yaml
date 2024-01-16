@@ -76,7 +76,6 @@ paths:
           description: Bad request
         '403':
           description: Unauthorized
-  /tenant:
     get:
       description: List tenants using pagination
       parameters:
@@ -110,99 +109,6 @@ paths:
                     type: array
                     items:
                       type: string
-        '400':
-          description: Bad request
-        '403':
-          description: Unauthorized
-    post:
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                tenantId:
-                  type: string
-      responses:
-        '200':
-          description: |-
-            200 response
-        '400':
-          description: Bad request
-        '403':
-          description: Unauthorized
-  /tenant/flush:
-    post:
-      description: Flush all tenant queues. Required roles&#58; Admin
-      responses:
-        '200':
-          description: |-
-            200 response
-        '400':
-          description: Bad request
-        '403':
-          description: Unauthorized
-  /tenant/{tenantId}:
-    get:
-      parameters:
-        - name: tenantId
-          in: path
-          required: true
-          description: Verify tenant exists
-          schema:
-            type : string
-      responses:
-        '200':
-          description: |-
-            200 response
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  id:
-                    type: string
-        '400':
-          description: Bad request
-        '403':
-          description: Unauthorized
-    delete:
-      parameters:
-        - name: tenantId
-          in: path
-          required: true
-          description: Delete tenant by id
-          schema:
-            type : string
-      responses:
-        '200':
-          description: |-
-            200 response
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  id:
-                    type: string
-        '400':
-          description: Bad request
-        '403':
-          description: Unauthorized
-  /tenant/{tenantId}/flush:
-    post:
-      description: Flush tenant queues
-      parameters:
-        - name: tenantId
-          in: path
-          required: true
-          description: Flush tenant queue
-          schema:
-            type : string
-      responses:
-        '200':
-          description: |-
-            200 response
         '400':
           description: Bad request
         '403':
