@@ -121,19 +121,26 @@ paths:
             schema:
               type: object
               required:
-                - tenantId
+                - groupId
                 - messages
               properties:
-                tenantId:
+                groupId:
                   type: string
                 highPriority:
                   type: boolean
                 messages:
                   type: array
+                  items:
+                    type: object
+                    required:
+                      - payload
+                    properties:
+                      payload:
+                        type: string
+                      deduplicationId:
+                        type: string
                   maxItems: 10
                   minItems: 0
-                  items:
-                    type: string
       responses:
         '200':
           description: |-

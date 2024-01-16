@@ -1,12 +1,16 @@
 import { exec } from "child_process";
 
-import { REGION } from "./environment-variables";
+import { PARALLELISM, REGION } from "./environment-variables";
 
 export function validateEnvVar(environmentVariableName: string): string {
   if (process.env[environmentVariableName]) {
     return process.env[environmentVariableName] || "";
   }
   throw new Error(`Unable to find ${environmentVariableName}`);
+}
+
+export function getEnvironmentParallelism() {
+  return parseInt(process.env[PARALLELISM] || "1");
 }
 
 export function importRegionEnvVar() {

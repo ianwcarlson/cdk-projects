@@ -5,10 +5,14 @@ import { Construct } from "constructs";
 import {
   HIGH_PRIORITY_QUEUE_URLS,
   INSTANCE_ID,
+  PARALLELISM,
   QUEUE_URLS,
   REGION,
 } from "../../environment-variables";
 import { ManagedPolicy } from "aws-cdk-lib/aws-iam";
+import { getEnvironmentParallelism } from "../../utils";
+
+const parallelism = getEnvironmentParallelism();
 
 interface CreateLambdaInput {
   id: string;
@@ -170,6 +174,7 @@ export class MultiTenantQueueLambdaTop extends NestedStack {
       id: "api-default-handler",
       description: "Default API Handler",
       environment: {
+        [PARALLELISM]: parallelism.toString(),
         [QUEUE_URLS]: JSON.stringify(props.queueUrls),
         [HIGH_PRIORITY_QUEUE_URLS]: JSON.stringify(props.highPriorityQueueUrls),
       },

@@ -51,9 +51,10 @@ function encodeReceiptHandle({
   // We want to ensure there are no colons in the queue url, since we use
   // colons to separate the queue url from the receipt handle when we
   // return the message to the client.
+  const encodedQueueUrl = Buffer.from(queueUrl).toString(IntermediateEncoding);
   const encodedReceiptHandle =
     Buffer.from(receiptHandle).toString(IntermediateEncoding);
-  return `${id}:${queueUrl}:${encodedReceiptHandle}`;
+  return `${id}:${encodedQueueUrl}:${encodedReceiptHandle}`;
 }
 
 export function decodeReceiptHandle(receiptHandle: string) {
@@ -62,5 +63,8 @@ export function decodeReceiptHandle(receiptHandle: string) {
     encodedReceiptHandle,
     IntermediateEncoding,
   ).toString("utf-8");
-  return { id, queueUrl, receiptHandle: decodedReceiptHandle };
+  const decodedQueueUrl = Buffer.from(queueUrl, IntermediateEncoding).toString(
+    "utf-8",
+  );
+  return { id, queueUrl: decodedQueueUrl, receiptHandle: decodedReceiptHandle };
 }

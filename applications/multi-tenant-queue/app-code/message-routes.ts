@@ -9,12 +9,10 @@ import {
   sendMessageBatch,
 } from "../../../lib/sdk-drivers/sqs/sqs-io";
 import { adaptReceivedMessages, decodeReceiptHandle } from "./common";
-import { validateEnvVar } from "../../../utils";
-import { RoundRobinQueueMessage } from "./common-types";
+import { getEnvironmentParallelism, validateEnvVar } from "../../../utils";
 import { ReceiveMessageCommandOutput } from "@aws-sdk/client-sqs";
 import {
   HIGH_PRIORITY_QUEUE_URLS,
-  PARALLELISM,
   QUEUE_URLS,
 } from "../../../environment-variables";
 
@@ -22,22 +20,28 @@ const queueUrls: string[] = JSON.parse(validateEnvVar(QUEUE_URLS));
 const highPriorityQueueUrls: string[] = JSON.parse(
   validateEnvVar(HIGH_PRIORITY_QUEUE_URLS),
 );
-const parallelism = parseInt(validateEnvVar(PARALLELISM));
+const parallelism = getEnvironmentParallelism();
 
 const router = Router();
 
 let writeIndex: number | null = null;
 let readIndex: number | null = null;
 
+interface SendMessageRequest {
+  messages: { payload: string, deduplicationId?: string }[];
+  highPriority: boolean;
+  groupId: string;
+}
+
 router.post(
   "/send",
   // verifyRole([RbacRoles.Write, RbacRoles.Admin]),
   async (req: Request, res: Response) => {
-    const _req = conformToExpress(req);
-    const tenantId = _req.body.tenantId;
-    const messages: string[] = _req.body.messages;
-    const highPriority = _req.body.highPriority;
-    const groupId = _req.body.groupId;
+    const {
+      messages,
+      highPriority,
+      groupId,
+    }: SendMessageRequest = conformToExpress(req).body;
 
     // Determine which queue to send to.
     // This is a very cheap way of uniformly distributing messages across
@@ -56,9 +60,13 @@ router.post(
     }
 
     const formattedMessages = messages.map((message) => {
+      // By default, deduplication is disabled
+      const finalDedupeId = message.deduplicationId || uuidv4();
       return {
         id: uuidv4(),
-        messageBody: message,
+        messageBody: message.payload,
+        messageGroupId: groupId,
+        messageDeduplicationId: finalDedupeId,
       };
     });
 
@@ -66,13 +74,7 @@ router.post(
       queueUrl: highPriority
         ? highPriorityQueueUrls[writeIndex]
         : queueUrls[writeIndex],
-      messages: [
-        {
-          id: tenantId,
-          messageBody: JSON.stringify(formattedMessages),
-          messageGroupId: groupId,
-        },
-      ],
+      messages: formattedMessages,
     });
 
     res.status(200).send({ message: "Messages sent", status: 200 });
@@ -80,10 +82,13 @@ router.post(
 );
 
 router.get("/receive", async (req: Request, res: Response) => {
-  const { query } = conformToExpress(req);
-  const autoAcknowledgeQuery = query.autoAcknowledge === "true";
+  // const { query } = conformToExpress(req);
+  // @ts-ignore
+  const autoAcknowledgeQuery = req.query.autoAcknowledge === true;
+  // console.log("query", JSON.stringify(query));
 
   if (readIndex === null) {
+    console.log("readIndex is null");
     readIndex = getRandomInt(0, parallelism);
   } else {
     readIndex = readIndex + 1;
@@ -101,7 +106,7 @@ router.get("/receive", async (req: Request, res: Response) => {
       acknowledgeMessageReceived: highPriorityAcknowledgeMessageReceived,
     } = await receiveMessage({
       queueUrl: highPriorityQueueUrls[index],
-      maxNumberOfMessages: 1,
+      maxNumberOfMessages: 10,
       waitTimeSeconds: 0,
     });
 
@@ -111,6 +116,7 @@ router.get("/receive", async (req: Request, res: Response) => {
 
     if (atLeastOneMessage(highPriorityResponse)) {
       if (autoAcknowledgeQuery) {
+        console.log("acknowledging high priority message");
         await highPriorityAcknowledgeMessageReceived();
       }
       res.status(200).send(
@@ -124,7 +130,7 @@ router.get("/receive", async (req: Request, res: Response) => {
 
     const { response, acknowledgeMessageReceived } = await receiveMessage({
       queueUrl: queueUrls[readIndex],
-      maxNumberOfMessages: 1,
+      maxNumberOfMessages: 10,
       waitTimeSeconds: 0,
     });
 
@@ -132,6 +138,7 @@ router.get("/receive", async (req: Request, res: Response) => {
 
     if (atLeastOneMessage(response)) {
       if (autoAcknowledgeQuery) {
+        console.log("acknowledging message");
         await acknowledgeMessageReceived();
       }
       res.status(200).send(
@@ -156,8 +163,11 @@ interface AcknowledgeRequest {
 router.post("/acknowledge", async (req: Request, res: Response) => {
   const { receiptHandle }: AcknowledgeRequest = conformToExpress(req).body;
 
-  const { id, queueUrl, receiptHandle: awsReceiptHandle } =
-    decodeReceiptHandle(receiptHandle);
+  const {
+    id,
+    queueUrl,
+    receiptHandle: awsReceiptHandle,
+  } = decodeReceiptHandle(receiptHandle);
 
   await deleteMessageBatch({
     queueUrl,
@@ -168,7 +178,9 @@ router.post("/acknowledge", async (req: Request, res: Response) => {
 });
 
 function getRandomInt(min: number, max: number) {
-  return Math.floor(Math.random() * (max - min + 1) + min);
+  min = Math.ceil(min);
+  max = Math.floor(max);
+  return Math.floor(Math.random() * (max - min) + min); // The maximum is
 }
 
 function atLeastOneMessage(message: ReceiveMessageCommandOutput) {
