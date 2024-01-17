@@ -157,14 +157,6 @@ paths:
           in: query
           schema:
             type: boolean
-        - name: waitTimeSeconds
-          in: query
-          required: true
-          description: Get messages for tenant
-          schema:
-            type: integer
-            minimum: 0
-            maximum: 20
       responses:
         '200':
           description: |-

@@ -141,7 +141,7 @@ router.get("/receive", async (req: Request, res: Response) => {
         console.log("acknowledging message");
         await acknowledgeMessageReceived();
       }
-      res.status(200).send(
+      res.status(200).send(                                                                                                      
         adaptReceivedMessages({
           messages: response.Messages || [],
           queueUrl: queueUrls[readIndex],
@@ -155,24 +155,27 @@ router.get("/receive", async (req: Request, res: Response) => {
 });
 
 interface AcknowledgeRequest {
-  receiptHandle: string;
-  queueUrl: string;
-  id: string;
+  receiptHandles: string[];
 }
 
 router.post("/acknowledge", async (req: Request, res: Response) => {
-  const { receiptHandle }: AcknowledgeRequest = conformToExpress(req).body;
+  const { receiptHandles }: AcknowledgeRequest = conformToExpress(req).body;
 
-  const {
-    id,
-    queueUrl,
-    receiptHandle: awsReceiptHandle,
-  } = decodeReceiptHandle(receiptHandle);
-
-  await deleteMessageBatch({
-    queueUrl,
-    entries: [{ id, receiptHandle: awsReceiptHandle }],
+  const decodedReceiptHandles = receiptHandles.map((receiptHandle) => {
+    const {
+      id,
+      queueUrl,
+      receiptHandle: awsReceiptHandle,
+    } = decodeReceiptHandle(receiptHandle);
+    return { id, queueUrl, receiptHandle: awsReceiptHandle };
   });
+
+  decodedReceiptHandles.forEach(async ({ id, queueUrl, receiptHandle }) => {
+    await deleteMessageBatch({
+      queueUrl,
+      entries: [{ id, receiptHandle }],
+    });
+  })
 
   res.sendStatus(200);
 });
