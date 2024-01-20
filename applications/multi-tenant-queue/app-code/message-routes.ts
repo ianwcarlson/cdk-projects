@@ -28,7 +28,7 @@ let writeIndex: number | null = null;
 let readIndex: number | null = null;
 
 interface SendMessageRequest {
-  messages: { payload: string, deduplicationId?: string }[];
+  messages: { payload: string; deduplicationId?: string }[];
   highPriority: boolean;
   groupId: string;
 }
@@ -37,11 +37,8 @@ router.post(
   "/send",
   // verifyRole([RbacRoles.Write, RbacRoles.Admin]),
   async (req: Request, res: Response) => {
-    const {
-      messages,
-      highPriority,
-      groupId,
-    }: SendMessageRequest = conformToExpress(req).body;
+    const { messages, highPriority, groupId }: SendMessageRequest =
+      conformToExpress(req).body;
 
     // Determine which queue to send to.
     // This is a very cheap way of uniformly distributing messages across
@@ -141,7 +138,7 @@ router.get("/receive", async (req: Request, res: Response) => {
         console.log("acknowledging message");
         await acknowledgeMessageReceived();
       }
-      res.status(200).send(                                                                                                      
+      res.status(200).send(
         adaptReceivedMessages({
           messages: response.Messages || [],
           queueUrl: queueUrls[readIndex],
@@ -161,6 +158,8 @@ interface AcknowledgeRequest {
 router.post("/acknowledge", async (req: Request, res: Response) => {
   const { receiptHandles }: AcknowledgeRequest = conformToExpress(req).body;
 
+  console.log("req.body", JSON.stringify(req.body, null, 2));
+
   const decodedReceiptHandles = receiptHandles.map((receiptHandle) => {
     const {
       id,
@@ -175,7 +174,7 @@ router.post("/acknowledge", async (req: Request, res: Response) => {
       queueUrl,
       entries: [{ id, receiptHandle }],
     });
-  })
+  });
 
   res.sendStatus(200);
 });

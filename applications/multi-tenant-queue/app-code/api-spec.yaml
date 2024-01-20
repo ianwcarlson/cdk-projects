@@ -188,12 +188,15 @@ paths:
         content:
           application/json:
             schema:
-              type: array
-              maxItems: 10
-              minItems: 0
-              items:
-                type: string
-                description: Message handle received from /receive-message call
+              type: object
+              properties:
+                receiptHandles:
+                  type: array
+                  maxItems: 10
+                  minItems: 0
+                  items:
+                    type: string
+                    description: Message handle received from /receive-message call
       responses:
         '200':
           description: |-

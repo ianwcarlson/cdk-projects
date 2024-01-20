@@ -50,6 +50,6 @@ app.use("/user", userRoutes);
 app.use("/message", messageRoutes);
 
 // http.createServer(app).listen(port);
-// console.log(`Listening on port ${port}`);
+// console.log(`Listening on port ${port}`);;
 
 export { app };
