@@ -1,22 +1,16 @@
 import fs from "fs";
+import { at } from "lodash";
 import path from "path";
-import { pipeline } from "stream";
-import { promisify } from "util";
 
 import sax from "sax";
 
-const LOG_THRESHOLD = 500;
-
 const saxStream = sax.createStream(true, {});
-
-const DEEPER = "DEEPER";
-const SHALLOWER = "SHALLOWER";
-const traverseDirectionHistory = [];
 
 async function main() {
   let currentPath = "root.0";
   const keyValueMap = new Map<string, string>();
   const keyCountMap = new Map<string, number>();
+  const attributesMap = new Map<string, Map<string, string>>();
 
   saxStream.on("error", function (e) {
     // unhandled errors will throw, since this is a proper node
@@ -27,6 +21,7 @@ async function main() {
     // this._parser.resume()
   });
   saxStream.on("opentag", function (node) {
+    // console.log("node: ", node);
     const pathForCounts = currentPath + "." + node.name;
     const currentKeyCount = keyCountMap.get(pathForCounts) || 1;
 
@@ -38,12 +33,17 @@ async function main() {
     if (previousText) {
       currentPath = incrementCurrentPath(currentPath);
     }
+
+    if (Object.keys(node.attributes).length > 0) {
+      attributesMap.set(currentPath, new Map(Object.entries(node.attributes)));
+    }
   });
   saxStream.on("text", function (text) {
     // Remove uncessary formatting
     const filteredText = text.replace(/(\r\n|\n|\r)/gm, "");
     const removeDoubleSpaces = filteredText.replace(/\s+/g, " ").trim();
     if (removeDoubleSpaces.length > 0) {
+      // Only persist if the information is useful
       keyValueMap.set(currentPath, removeDoubleSpaces);
     }
   });
@@ -52,24 +52,68 @@ async function main() {
     const splitPath = currentPath.split(".");
     const removeLastTwoElements = splitPath.slice(0, splitPath.length - 2);
     currentPath = removeLastTwoElements.join(".");
-
-    if (currentPath.length < LOG_THRESHOLD) {
-      console.log("closetag: ", currentPath); 
-    }
   });
   // pipe is supported, and it's readable/writable
   // same chunks coming in also go out.
   await new Promise<void>((resolve, reject) => {
     fs.createReadStream(path.resolve(__dirname, "sample.xml"))
-    .pipe(saxStream)
-    .on('end', () => {
-      console.log('CSV file successfully processed');
-      resolve();
-    })
-    .on('error', reject); 
+      .pipe(saxStream)
+      .on("end", () => {
+        console.log("CSV file successfully processed");
+        resolve();
+      })
+      .on("error", reject);
   });
-  console.log("keyValueMap: ",[...keyValueMap.entries()]);
+  // console.log("keyValueMap: ",[...keyValueMap.entries()]);
+  // console.log("attributesMap: ",[...attributesMap.entries()]);
+  const documents = buildDocumentstoSubmit(keyValueMap, attributesMap);
+  console.log("documents: ", JSON.stringify(documents, null, 2));
+}
 
+interface Document {
+  path: string;
+  text?: string;
+  attributes?: { attrKey: string; attrValue: string }[];
+}
+
+function buildDocumentstoSubmit(
+  keyValueMap: Map<string, string>,
+  attributesMap: Map<string, Map<string, string>>,
+) {
+  const documents: Document[] = [...keyValueMap.entries()].map(
+    ([path, text]) => {
+      const attributes = attributesMap.get(path);
+      return {
+        path,
+        text,
+        attributes: formatAttributes(attributes),
+      };
+    },
+  );
+  const attributeDocuments: Document[] = [...attributesMap.entries()].map(
+    ([path, attributes]) => {
+      return {
+        path,
+        attributes: formatAttributes(attributes),
+      };
+    },
+  );
+
+  return documents.concat(attributeDocuments);
+}
+
+function formatAttributes(attributes?: Map<string, string>) {
+  if (attributes) {
+    const attributesObj = Object.fromEntries(attributes);
+    return Object.keys(attributesObj).map((key) => {
+      const value = attributesObj[key];
+      return {
+        attrKey: key,
+        attrValue: value,
+      };
+    });
+  }
+  return [];
 }
 
 function incrementCurrentPath(currentPath: string) {
@@ -78,7 +122,10 @@ function incrementCurrentPath(currentPath: string) {
 
   const newCount = count + 1;
 
-  return currentPath.substring(0, currentPath.lastIndexOf(".") + 1) + (newCount).toString();
+  return (
+    currentPath.substring(0, currentPath.lastIndexOf(".") + 1) +
+    newCount.toString()
+  );
 }
 
 main().then();

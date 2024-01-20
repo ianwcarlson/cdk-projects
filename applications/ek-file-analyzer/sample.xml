@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <catalog>
-   <book id="bk101">
+   <book id="bk101" class="test">
       <author>Gambardella, Matthew</author>
       <title>XML Developer's Guide</title>
       <genre>Computer</genre>
