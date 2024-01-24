@@ -7,11 +7,16 @@ import { DocumentSubmitter } from "./document-submitter";
 
 const PATH_DELIMITER = "/";
 const READ_BUFFER_SIZE = 4096;
-const FileName = "1520974.xml";
+const FileName = "sample3.xml";
+const RootPath = `${FileName}${PATH_DELIMITER}0`
+
+const pathsToOmit = [
+  /.*\/0\/CATALOG\/0\/CD\/\d+\/TITLE\/0/
+];
 
 async function main() {
   const saxStream = new SaxesParser();
-  let currentPath = `${FileName}${PATH_DELIMITER}0`;
+  let currentPath = RootPath;
   const keyValueMap = new Map<string, string>();
   const keyCountMap = new Map<string, number>();
   const attributesMap = new Map<string, Map<string, string>>();
@@ -23,6 +28,8 @@ async function main() {
   });
 
   saxStream.on("opentag", async function (node) {
+    // console.log("currentPath: ", currentPath);
+
     const pathForCounts = currentPath + PATH_DELIMITER + node.name;
     const currentKeyCount = keyCountMap.get(pathForCounts) || 1;
 
@@ -36,7 +43,9 @@ async function main() {
       currentPath = incrementCurrentPath(currentPath);
     }
 
-    if (Object.keys(node.attributes).length > 0) {
+    const omitted = pathsToOmit.some((pathToOmit) => pathToOmit.test(currentPath));
+
+    if (Object.keys(node.attributes).length > 0 && !omitted) {
       attributesMap.set(currentPath, new Map(Object.entries(node.attributes)));
       await documentSubmitter.addAttributeDocument({ attributesMap });
     }
@@ -44,10 +53,11 @@ async function main() {
   });
 
   saxStream.on("text", async function (text) {
+    const omitted = pathsToOmit.some((pathToOmit) => pathToOmit.test(currentPath));
     // Remove uncessary formatting
     const filteredText = text.replace(/(\r\n|\n|\r)/gm, "");
     const removeDoubleSpaces = filteredText.replace(/\s+/g, " ").trim();
-    if (removeDoubleSpaces.length > 0) {
+    if (removeDoubleSpaces.length > 0 && !omitted) {
       // Only persist if the information is useful
       keyValueMap.set(currentPath, removeDoubleSpaces);
       await documentSubmitter.addDocument({ keyValueMap });
