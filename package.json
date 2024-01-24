@@ -49,7 +49,7 @@
     "express": "^4.18.2",
     "express-openapi-validator": "^5.1.2",
     "lodash": "^4.17.21",
-    "sax": "^1.3.0",
+    "saxes": "^6.0.0",
     "source-map-support": "^0.5.21",
     "uuid": "^9.0.1"
   }

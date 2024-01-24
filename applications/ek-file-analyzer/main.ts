@@ -1,15 +1,17 @@
 import fs from "fs";
 import path from "path";
 
-import sax from "sax";
+import { SaxesParser } from "saxes";
 
 import { DocumentSubmitter } from "./document-submitter";
 
 const PATH_DELIMITER = "/";
+const READ_BUFFER_SIZE = 4096;
+const FileName = "1520974.xml";
 
 async function main() {
-  const saxStream = sax.createStream(true, {});
-  let currentPath = `root${PATH_DELIMITER}0`;
+  const saxStream = new SaxesParser();
+  let currentPath = `${FileName}${PATH_DELIMITER}0`;
   const keyValueMap = new Map<string, string>();
   const keyCountMap = new Map<string, number>();
   const attributesMap = new Map<string, Map<string, string>>();
@@ -17,13 +19,7 @@ async function main() {
   await documentSubmitter.initialize();
 
   saxStream.on("error", function (e) {
-    // unhandled errors will throw, since this is a proper node
-    // event emitter.
-    // console.error("error!", e);
-    // clear the error
-    // @ts-ignore
-    this._parser.error = null
-    this._parser.resume()
+    console.error("error", e);
   });
 
   saxStream.on("opentag", async function (node) {
@@ -41,7 +37,6 @@ async function main() {
     }
 
     if (Object.keys(node.attributes).length > 0) {
-      // console.log("currentPath: ", currentPath);
       attributesMap.set(currentPath, new Map(Object.entries(node.attributes)));
       await documentSubmitter.addAttributeDocument({ attributesMap });
     }
@@ -55,42 +50,51 @@ async function main() {
     if (removeDoubleSpaces.length > 0) {
       // Only persist if the information is useful
       keyValueMap.set(currentPath, removeDoubleSpaces);
-      // console.log("keyValueMap: ", JSON.stringify([...keyValueMap.entries()], null, 2));
-      // console.log("currentPath: ", currentPath, "removeDoubleSpaces: ", removeDoubleSpaces);
       await documentSubmitter.addDocument({ keyValueMap });
     }
     keyValueMap.clear();
   });
 
   saxStream.on("closetag", function (node) {
-    // same object as above
-    const splitPath = currentPath.split(PATH_DELIMITER);
-    const removeLastTwoElements = splitPath.slice(0, splitPath.length - 2);
-    currentPath = removeLastTwoElements.join(PATH_DELIMITER);
+    keyCountMap.delete(currentPath);
+    // Not sure how to use string interpolation with path delimiter here
+    // Need to not split on escaped path delimiters
+    const splitPath = currentPath.match(/(\\.|[^\/])+/g);
+    if (splitPath) {
+      const removeLastTwoElements = splitPath.slice(0, splitPath.length - 2);
+      currentPath = removeLastTwoElements.join(PATH_DELIMITER);
+    } else {
+      console.error("Error parsing path: ", currentPath);
+    }
   });
-  // pipe is supported, and it's readable/writable
-  // same chunks coming in also go out.
+
+  const input = fs.createReadStream(path.resolve(__dirname, FileName));
+  const start = Date.now();
+
   await new Promise<void>((resolve, reject) => {
-    fs.createReadStream(path.resolve(__dirname, "sample6.html"))
-      .pipe(saxStream)
-      .on("end", () => {
-        console.log("!!!!!!!XML file successfully processed!!!!!!!!!!");
-        resolve();
-      })
-      .on("finish", () => {
-        console.log("!!!!DONE!!!!");
-        resolve();
-      })
-      .on("error", () => {
-        console.error("Error processing XML file");
-        // reject();
-      });
-  });
-  // console.log("keyValueMap: ",[...keyValueMap.entries()]);
-  // console.log("attributesMap: ",[...attributesMap.entries()]);
-  console.log("Flushing documents")
+    input.on("readable", () => {
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const chunk = input.read(READ_BUFFER_SIZE);
+        if (chunk === null) {
+          return;
+        }
+  
+        saxStream.write(chunk);
+      }
+    });
+  
+    input.on("end", () => {
+      saxStream.close();
+
+      resolve();
+    });
+  })
+
+  console.log("Flushing documents");
   await documentSubmitter.flush();
   console.log("Finished processing file");
+  console.log(`Parsing time: ${Date.now() - start}`);
 }
 
 function incrementCurrentPath(currentPath: string) {

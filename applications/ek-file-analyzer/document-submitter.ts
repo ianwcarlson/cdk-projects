@@ -14,9 +14,11 @@ interface AddAttributeDocumentInput {
 
 export class DocumentSubmitter {
   documents: ESDocument[] = [];
+  documentCount: number = 0;
   constructor() {}
 
   public async initialize() {
+    this.documentCount = 0;
     const indexExists = await elasticClient.indices.exists({
       index: INDEX_NAME,
     });
@@ -43,6 +45,7 @@ export class DocumentSubmitter {
 
   public async flush() {
     this.batchSubmitDocuments([], true);
+    console.log("Total documents submitted: ", this.documentCount);
   }
 
   public async addDocument({ keyValueMap }: AddDocumentInput) {
@@ -115,14 +118,14 @@ export class DocumentSubmitter {
       });
       console.log("Submitting documents: ", this.documents.length);
       // console.log("First document: ", JSON.stringify(this.documents[0]));
+      this.documentCount += this.documents.length;
       this.documents = [];
 
-      // await elasticClient.bulk({
-      //   body,
-      // }).catch((err) => {
-      //   console.error("Error submitting documents: ", err);
-      // });
-      console.log("Finished submitting documents: ", this.documents.length);
+      await elasticClient.bulk({
+        body,
+      }).catch((err) => {
+        console.error("Error submitting documents: ", err);
+      });
 
     }
   }
