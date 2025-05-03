@@ -17,7 +17,7 @@ export function importRegionEnvVar() {
   let region = process.env[REGION];
   if (!region) {
     console.log(
-      "REGION environment variable not provided, defaulting to us-east-1",
+      "REGION environment variable not provided, defaulting to us-east-1"
     );
     region = "us-west-1";
   }
@@ -26,7 +26,7 @@ export function importRegionEnvVar() {
 
 export async function execShellCommand(
   cmd: string,
-  options: { [key: string]: string },
+  options: { [key: string]: string }
 ) {
   return new Promise((resolve, reject) => {
     exec(
@@ -38,7 +38,7 @@ export async function execShellCommand(
           reject(error);
         }
         resolve(stdout || stderr);
-      },
+      }
     );
   });
 }
@@ -75,7 +75,7 @@ export function groupArray<T>(input: T[], groupSize: number) {
 }
 
 export function didAnySettledPromisesFail<T>(
-  results: PromiseSettledResult<T>[],
+  results: PromiseSettledResult<T>[]
 ) {
   const failedResults = results.filter((result, idx, results) => {
     return result.status === "rejected";
@@ -84,7 +84,7 @@ export function didAnySettledPromisesFail<T>(
 }
 
 export function getFulfilledValuesFromSettledPromises<T>(
-  results: PromiseSettledResult<T>[],
+  results: PromiseSettledResult<T>[]
 ) {
   return results.map((result) => {
     return result.status === "fulfilled" ? result.value : null;
@@ -92,7 +92,7 @@ export function getFulfilledValuesFromSettledPromises<T>(
 }
 
 export function getFailedValuesFromSettledPromises<T>(
-  results: PromiseSettledResult<T>[],
+  results: PromiseSettledResult<T>[]
 ) {
   return results.reduce((acc: PromiseRejectedResult[], result) => {
     if (result.status === "rejected") {

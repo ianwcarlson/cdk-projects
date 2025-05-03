@@ -23,10 +23,7 @@ import {
   ListTasksCommandInput,
 } from "@aws-sdk/client-ecs";
 import { groupArray, importRegionEnvVar, sleep } from "../../../utils";
-import { DeleteQueueCommand } from "@aws-sdk/client-sqs";
-import { sqsClient } from "../sqs/sqs-client";
 import { ecsClient } from "./ecs-client";
-import { availableParallelism } from "os";
 
 const RETRY_WAIT_MS = 200;
 export const ECS_TASK_STATE_STOPPED = "STOPPED";

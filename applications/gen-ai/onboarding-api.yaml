@@ -1,0 +1,52 @@
+servers:
+- url: https://api.example.com
+  description: Example API server
+openapi: 3.0.0
+info:
+  title: Onboarding API
+  description: API for onboarding new users, teams, sso, integrations, prioritization, service-license-agreement, (SLA), notifications, list-view columns, dashboard widgets, and composite asset rules.
+  version: 1.0.0
+paths:
+  
+  /api/v1/accounts/{account-id}/sso:
+    get:
+      summary: SSO configurations for the provided account
+      description: Retrieve SSO configurations for the specified account. If no SSO configurations are found, that means the account doesn't have an SSO configuration.
+      operationId: getSSOConfigurations
+      parameters:
+        - name: account-id
+          in: path
+          required: true
+          description: The ID of the account to retrieve SSO configurations for.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response with SSO configurations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ssoConfigurations:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          description: The ID of the SSO configuration.
+                        name:
+                          type: string
+                          description: The name of the SSO configuration.
+                        status:
+                          type: string
+                          description: The status of the SSO configuration.
+        '400':
+          $ref: './http-responses.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: './http-responses.yaml#/components/responses/Unauthorized'
+        '404':
+          $ref: './http-responses.yaml#/components/responses/NotFound'
+        '500':
+          $ref: './http-responses.yaml#/components/responses/InternalServerError'

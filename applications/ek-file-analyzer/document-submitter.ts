@@ -49,10 +49,7 @@ export class DocumentSubmitter {
   }
 
   public async addDocument({ keyValueMap }: AddDocumentInput) {
-
-    const newDocuments = this.buildDocumentsToSubmit(
-      keyValueMap,
-    );
+    const newDocuments = this.buildDocumentsToSubmit(keyValueMap);
 
     // Purposely not awaiting this because we don't want to block the main thread,
     // but still log errors
@@ -61,10 +58,10 @@ export class DocumentSubmitter {
     });
   }
 
-  public async addAttributeDocument({ attributesMap }: AddAttributeDocumentInput) {
-    const newDocuments = this.buildAttributeDocumentsToSubmit(
-      attributesMap,
-    );
+  public async addAttributeDocument({
+    attributesMap,
+  }: AddAttributeDocumentInput) {
+    const newDocuments = this.buildAttributeDocumentsToSubmit(attributesMap);
 
     // Purposely not awaiting this because we don't want to block the main thread,
     // but still log errors
@@ -88,9 +85,7 @@ export class DocumentSubmitter {
     return attributeDocuments;
   }
 
-  private buildDocumentsToSubmit(
-    keyValueMap: Map<string, string>,
-  ) {
+  private buildDocumentsToSubmit(keyValueMap: Map<string, string>) {
     // Optimize spread operator later
     const documents: ESDocument[] = [...keyValueMap.entries()].map(
       ([path, text]) => {
@@ -121,12 +116,13 @@ export class DocumentSubmitter {
       this.documentCount += this.documents.length;
       this.documents = [];
 
-      await elasticClient.bulk({
-        body,
-      }).catch((err) => {
-        console.error("Error submitting documents: ", err);
-      });
-
+      await elasticClient
+        .bulk({
+          body,
+        })
+        .catch((err) => {
+          console.error("Error submitting documents: ", err);
+        });
     }
   }
 

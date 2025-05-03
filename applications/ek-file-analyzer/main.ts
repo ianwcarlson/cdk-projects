@@ -8,11 +8,9 @@ import { DocumentSubmitter } from "./document-submitter";
 const PATH_DELIMITER = "/";
 const READ_BUFFER_SIZE = 4096;
 const FileName = "sample3.xml";
-const RootPath = `${FileName}${PATH_DELIMITER}0`
+const RootPath = `${FileName}${PATH_DELIMITER}0`;
 
-const pathsToOmit = [
-  /.*\/0\/CATALOG\/0\/CD\/\d+\/TITLE\/0/
-];
+const pathsToOmit = [/.*\/0\/CATALOG\/0\/CD\/\d+\/TITLE\/0/];
 
 async function main() {
   const saxStream = new SaxesParser();
@@ -43,7 +41,9 @@ async function main() {
       currentPath = incrementCurrentPath(currentPath);
     }
 
-    const omitted = pathsToOmit.some((pathToOmit) => pathToOmit.test(currentPath));
+    const omitted = pathsToOmit.some((pathToOmit) =>
+      pathToOmit.test(currentPath),
+    );
 
     if (Object.keys(node.attributes).length > 0 && !omitted) {
       attributesMap.set(currentPath, new Map(Object.entries(node.attributes)));
@@ -53,7 +53,9 @@ async function main() {
   });
 
   saxStream.on("text", async function (text) {
-    const omitted = pathsToOmit.some((pathToOmit) => pathToOmit.test(currentPath));
+    const omitted = pathsToOmit.some((pathToOmit) =>
+      pathToOmit.test(currentPath),
+    );
     // Remove uncessary formatting
     const filteredText = text.replace(/(\r\n|\n|\r)/gm, "");
     const removeDoubleSpaces = filteredText.replace(/\s+/g, " ").trim();
@@ -89,17 +91,16 @@ async function main() {
         if (chunk === null) {
           return;
         }
-  
+
         saxStream.write(chunk);
       }
     });
-  
+
     input.on("end", () => {
       saxStream.close();
-
       resolve();
     });
-  })
+  });
 
   console.log("Flushing documents");
   await documentSubmitter.flush();
